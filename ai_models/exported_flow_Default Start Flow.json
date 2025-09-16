@@ -1,0 +1,284 @@
+{
+  "flow": {
+    "flow": {
+      "flowId": "00000000-0000-0000-0000-000000000000",
+      "displayName": "Default Start Flow",
+      "description": "A start flow created along with the agent",
+      "transitionEvents": [ {
+        "triggerIntentId": "00000000-0000-0000-0000-000000000000",
+        "transitionEventHandler": {
+          "beforeTransition": {
+            "staticUserResponse": {
+              "candidates": [ {
+                "selector": {
+                  "platform": [ "PLATFORM_UNSPECIFIED" ],
+                  "lang": "en"
+                },
+                "responses": [ {
+                  "text": {
+                    "variants": [ {
+                      "text": "Hi! How are you doing?"
+                    }, {
+                      "text": "Hello! How can I help you?"
+                    }, {
+                      "text": "Good day! What can I do for you today?"
+                    }, {
+                      "text": "Greetings! How can I assist?"
+                    } ]
+                  }
+                } ]
+              } ]
+            }
+          }
+        },
+        "name": "d31888d2-f0ea-48b4-91da-f99015e7b9e0"
+      } ],
+      "modelIdentifier": {
+        "modelId": "a99e190a-8ba2-424c-8268-4c50cc23599b"
+      },
+      "conversationEvents": [ {
+        "event": "sys.no-match-default",
+        "handler": {
+          "beforeTransition": {
+            "staticUserResponse": {
+              "candidates": [ {
+                "selector": {
+                  "platform": [ "PLATFORM_UNSPECIFIED" ],
+                  "lang": "en"
+                },
+                "responses": [ {
+                  "text": {
+                    "variants": [ {
+                      "text": "I didn't get that. Can you say it again?"
+                    }, {
+                      "text": "I missed what you said. What was that?"
+                    }, {
+                      "text": "Sorry, could you say that again?"
+                    }, {
+                      "text": "Sorry, can you say that again?"
+                    }, {
+                      "text": "Can you say that again?"
+                    }, {
+                      "text": "Sorry, I didn't get that. Can you rephrase?"
+                    }, {
+                      "text": "Sorry, what was that?"
+                    }, {
+                      "text": "One more time?"
+                    }, {
+                      "text": "What was that?"
+                    }, {
+                      "text": "Say that one more time?"
+                    }, {
+                      "text": "I didn't get that. Can you repeat?"
+                    }, {
+                      "text": "I missed that, say that again?"
+                    } ]
+                  }
+                } ]
+              } ]
+            }
+          }
+        },
+        "name": "2a55ab6f-dbb1-47ee-ae95-d23b4c5363f0"
+      }, {
+        "event": "sys.no-input-default",
+        "handler": {
+          "beforeTransition": {
+            "staticUserResponse": {
+              "candidates": [ {
+                "selector": {
+                  "platform": [ "PLATFORM_UNSPECIFIED" ],
+                  "lang": "en"
+                },
+                "responses": [ {
+                  "text": {
+                    "variants": [ {
+                      "text": "I didn't get that. Can you say it again?"
+                    }, {
+                      "text": "I missed what you said. What was that?"
+                    }, {
+                      "text": "Sorry, could you say that again?"
+                    }, {
+                      "text": "Sorry, can you say that again?"
+                    }, {
+                      "text": "Can you say that again?"
+                    }, {
+                      "text": "Sorry, I didn't get that. Can you rephrase?"
+                    }, {
+                      "text": "Sorry, what was that?"
+                    }, {
+                      "text": "One more time?"
+                    }, {
+                      "text": "What was that?"
+                    }, {
+                      "text": "Say that one more time?"
+                    }, {
+                      "text": "I didn't get that. Can you repeat?"
+                    }, {
+                      "text": "I missed that, say that again?"
+                    } ]
+                  }
+                } ]
+              } ]
+            }
+          }
+        },
+        "name": "74877d6d-4c2f-42de-a2e9-4b806bc02343"
+      } ],
+      "nluSettings": {
+        "customConfigKey": "296d59bb-d720-4b00-94e4-38f883e04a51"
+      }
+    },
+    "intents": [ {
+      "meta": {
+        "id": "00000000-0000-0000-0000-000000000000",
+        "displayName": "Default Welcome Intent",
+        "priority": 500000
+      },
+      "trainingPhrases": [ {
+        "id": "b52889e8-8467-4e4a-9266-a9820eb9abbf",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "just going to say hi"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "68f25cd0-6548-4655-85d7-635b0ca69563",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "heya"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "e8b72460-22fb-4b98-9ec3-ee13e646f696",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "hello hi"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "6aa8d595-616a-4a5a-bcae-2cc19bf3f87d",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "howdy"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "c66be5f1-8250-464c-8468-94945d10d1e1",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "hey there"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "1e4c8218-77ee-4c8b-b254-9176b97a09e1",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "hi there"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "002096c6-9b6b-45b8-af53-c341f3ad3e9c",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "greetings"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "ff52dc37-7eef-450b-9841-fde6483b6f2e",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "hey"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "3cb93de9-0865-47f9-935b-8f5dd95b4077",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "long time no see"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "d9cf9701-250c-45dc-9475-c3b7ef6bd63c",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "hello"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "f054d32b-18c6-49ef-9e58-2be07396b351",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "lovely day isn't it"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "8c4012aa-e560-4779-92a5-1d0ce5f58b03",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "I greet you"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "05838f6d-08c2-4d65-b773-3ab2e2acf335",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "hello again"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "8ccfce51-0cc3-4d84-9f0a-b963e1f7c7bb",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "hi"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "4be3cd39-a6cd-474e-818f-582bb61b7d75",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "hello there"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "ef2555de-ea11-47ff-a688-4bdbff2a8fc0",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "hi there"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      }, {
+        "id": "c64ad04f-8c55-45fd-8baa-a4158d631387",
+        "type": "EXAMPLE",
+        "parts": [ {
+          "text": "a good day"
+        } ],
+        "timesAddedCount": 1,
+        "lang": "en"
+      } ]
+    }, {
+      "meta": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "displayName": "Default Negative Intent",
+        "priority": 500000,
+        "isFallback": true
+      }
+    } ]
+  }
+}

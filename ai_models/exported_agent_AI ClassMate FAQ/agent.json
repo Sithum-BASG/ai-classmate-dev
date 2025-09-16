@@ -1,0 +1,13 @@
+{
+  "displayName": "AI ClassMate FAQ",
+  "defaultLanguageCode": "en",
+  "timeZone": "Asia/Colombo",
+  "projectNumber": 290898239211,
+  "startFlow": "Default Start Flow",
+  "advancedSettings": {
+    "loggingSettings": {
+    
+    }
+  },
+  "dataResidencyOption": "DATA_RESIDENCY_IN_USE_COMPLIANT"
+}
