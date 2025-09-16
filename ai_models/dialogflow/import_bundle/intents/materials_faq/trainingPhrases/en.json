@@ -1,0 +1,44 @@
+﻿{
+    "trainingPhrases":  [
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "Where to find class materials?",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "How to download notes?",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "How to access recordings?",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "I cannot download materials",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            }
+                        ]
+}

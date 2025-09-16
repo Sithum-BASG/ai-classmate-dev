@@ -1,0 +1,15 @@
+subject_code,name,level
+OL_MATH,Mathematics,OL
+OL_SCI,Science,OL
+OL_ENG,English,OL
+OL_SIN,Sinhala,OL
+OL_TAM,Tamil,OL
+OL_ICT,ICT,OL
+AL_MATH,Combined Maths,AL
+AL_PHY,Physics,AL
+AL_CHEM,Chemistry,AL
+AL_BIO,Biology,AL
+AL_ECON,Economics,AL
+AL_ACC,Accounting,AL
+OTHER_ART,Art & Design,Other
+OTHER_MUS,Music,Other

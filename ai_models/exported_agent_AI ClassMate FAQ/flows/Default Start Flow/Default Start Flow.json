@@ -1,0 +1,323 @@
+{
+  "flow": {
+    "flow": {
+      "flowId": "00000000-0000-0000-0000-000000000000",
+      "displayName": "Default Start Flow",
+      "description": "AI ClassMate FAQ start flow",
+      "transitionEvents": [
+        {
+          "triggerIntentId": "10000000-0000-0000-0000-000000000001",
+          "transitionEventHandler": {
+            "beforeTransition": {
+              "staticUserResponse": {
+                "candidates": [
+                  {
+                    "selector": { "platform": ["PLATFORM_UNSPECIFIED"], "lang": "en" },
+                    "responses": [
+                      { "text": { "variants": [ { "text": "To enroll: search a class, open it, tap Enroll and confirm seats. You will see the enrollment as Pending until payment is verified." } ] } }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "name": "route_enrollment_faq"
+        },
+        {
+          "triggerIntentId": "10000000-0000-0000-0000-000000000002",
+          "transitionEventHandler": {
+            "beforeTransition": {
+              "staticUserResponse": {
+                "candidates": [
+                  {
+                    "selector": { "platform": ["PLATFORM_UNSPECIFIED"], "lang": "en" },
+                    "responses": [
+                      { "text": { "variants": [ { "text": "Payments: bank transfer, card, cash and online methods. Upload your payment proof on the invoice screen. Verification usually completes within 24-48 hours." } ] } }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "name": "route_payment_faq"
+        },
+        {
+          "triggerIntentId": "10000000-0000-0000-0000-000000000003",
+          "transitionEventHandler": {
+            "beforeTransition": {
+              "staticUserResponse": {
+                "candidates": [
+                  {
+                    "selector": { "platform": ["PLATFORM_UNSPECIFIED"], "lang": "en" },
+                    "responses": [
+                      { "text": { "variants": [ { "text": "Open Weekly Timetable to view upcoming sessions. Start times are local. If a class is canceled or changed we will notify you automatically." } ] } }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "name": "route_schedule_faq"
+        },
+        {
+          "triggerIntentId": "10000000-0000-0000-0000-000000000004",
+          "transitionEventHandler": {
+            "beforeTransition": {
+              "staticUserResponse": {
+                "candidates": [
+                  {
+                    "selector": { "platform": ["PLATFORM_UNSPECIFIED"], "lang": "en" },
+                    "responses": [
+                      { "text": { "variants": [ { "text": "Go to the class page -> Materials to view or download notes and files. Tutors may upload recordings when available. If downloads are disabled please contact the tutor." } ] } }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "name": "route_materials_faq"
+        },
+        {
+          "triggerIntentId": "10000000-0000-0000-0000-000000000005",
+          "transitionEventHandler": {
+            "beforeTransition": {
+              "staticUserResponse": {
+                "candidates": [
+                  {
+                    "selector": { "platform": ["PLATFORM_UNSPECIFIED"], "lang": "en" },
+                    "responses": [
+                      { "text": { "variants": [ { "text": "We send notifications for enrollment/payment status and schedule changes. You can mute non-critical messages from Settings -> Notifications." } ] } }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "name": "route_notifications_faq"
+        },
+        {
+          "triggerIntentId": "10000000-0000-0000-0000-000000000006",
+          "transitionEventHandler": {
+            "beforeTransition": {
+              "staticUserResponse": {
+                "candidates": [
+                  {
+                    "selector": { "platform": ["PLATFORM_UNSPECIFIED"], "lang": "en" },
+                    "responses": [
+                      { "text": { "variants": [ { "text": "Refunds: if your payment is verified and the tutor cancels or support approves a refund request, we process it to your original payment method within 5-10 business days." } ] } }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "name": "route_refund_faq"
+        },
+        {
+          "triggerIntentId": "10000000-0000-0000-0000-000000000007",
+          "transitionEventHandler": {
+            "beforeTransition": {
+              "staticUserResponse": {
+                "candidates": [
+                  {
+                    "selector": { "platform": ["PLATFORM_UNSPECIFIED"], "lang": "en" },
+                    "responses": [
+                      { "text": { "variants": [ { "text": "Update your profile from Profile -> Edit. You can change name, grade and area. Email changes require re-verification; phone changes require OTP." } ] } }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "name": "route_account_faq"
+        },
+        {
+          "triggerIntentId": "10000000-0000-0000-0000-000000000008",
+          "transitionEventHandler": {
+            "beforeTransition": {
+              "staticUserResponse": {
+                "candidates": [
+                  {
+                    "selector": { "platform": ["PLATFORM_UNSPECIFIED"], "lang": "en" },
+                    "responses": [
+                      { "text": { "variants": [ { "text": "Tutor and class approvals: admins review documents for authenticity and schedule conflicts. Class status changes from Draft to Published once approved." } ] } }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "name": "route_approval_faq"
+        },
+        {
+          "triggerIntentId": "10000000-0000-0000-0000-000000000009",
+          "transitionEventHandler": {
+            "beforeTransition": {
+              "staticUserResponse": {
+                "candidates": [
+                  {
+                    "selector": { "platform": ["PLATFORM_UNSPECIFIED"], "lang": "en" },
+                    "responses": [
+                      { "text": { "variants": [ { "text": "Admins and tutors can broadcast announcements. You can read all recent announcements from Home -> Announcements and receive push notifications." } ] } }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "name": "route_announcement_faq"
+        },
+        {
+          "triggerIntentId": "10000000-0000-0000-0000-000000000010",
+          "transitionEventHandler": {
+            "beforeTransition": {
+              "staticUserResponse": {
+                "candidates": [
+                  {
+                    "selector": { "platform": ["PLATFORM_UNSPECIFIED"], "lang": "en" },
+                    "responses": [
+                      { "text": { "variants": [ { "text": "To reschedule, contact the tutor from the class page. If a session is canceled by the tutor, a new date/time will be posted and you will be notified." } ] } }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "name": "route_reschedule_faq"
+        },
+        {
+          "triggerIntentId": "10000000-0000-0000-0000-000000000011",
+          "transitionEventHandler": {
+            "beforeTransition": {
+              "staticUserResponse": {
+                "candidates": [
+                  {
+                    "selector": { "platform": ["PLATFORM_UNSPECIFIED"], "lang": "en" },
+                    "responses": [
+                      { "text": { "variants": [ { "text": "Need help? Email support@classmate.lk or use Help -> Contact Support in the app. Include your user ID and the class/enrollment ID for faster assistance." } ] } }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "name": "route_support_faq"
+        }
+      ],
+      "conversationEvents": [
+        {
+          "event": "sys.no-match-default",
+          "handler": {
+            "beforeTransition": {
+              "staticUserResponse": {
+                "candidates": [
+                  {
+                    "selector": { "platform": ["PLATFORM_UNSPECIFIED"], "lang": "en" },
+                    "responses": [ { "text": { "variants": [ { "text": "Sorry, I did not catch that. Try asking about enrollment, payments, schedule, materials, notifications or refunds." } ] } } ]
+                  }
+                ]
+              }
+            }
+          },
+          "name": "no_match_handler"
+        },
+        {
+          "event": "sys.no-input-default",
+          "handler": {
+            "beforeTransition": {
+              "staticUserResponse": {
+                "candidates": [
+                  {
+                    "selector": { "platform": ["PLATFORM_UNSPECIFIED"], "lang": "en" },
+                    "responses": [ { "text": { "variants": [ { "text": "Are you still there? You can ask me about enrollment, payments, schedule or materials." } ] } } ]
+                  }
+                ]
+              }
+            }
+          },
+          "name": "no_input_handler"
+        }
+      ],
+      "nluSettings": { "customConfigKey": "generated" }
+    },
+    "intents": [
+      { "meta": { "id": "10000000-0000-0000-0000-000000000001", "displayName": "enrollment_faq", "priority": 500000 },
+        "trainingPhrases": [
+          { "id": "p1", "type": "EXAMPLE", "parts": [ { "text": "How do I enroll in a class?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p2", "type": "EXAMPLE", "parts": [ { "text": "What is the enrollment process?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p3", "type": "EXAMPLE", "parts": [ { "text": "How can a student join a class?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p4", "type": "EXAMPLE", "parts": [ { "text": "How to register for a class?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p5", "type": "EXAMPLE", "parts": [ { "text": "How to enroll from the app?" } ], "timesAddedCount": 1, "lang": "en" }
+        ] },
+      { "meta": { "id": "10000000-0000-0000-0000-000000000002", "displayName": "payment_faq", "priority": 500000 },
+        "trainingPhrases": [
+          { "id": "p1", "type": "EXAMPLE", "parts": [ { "text": "How do I pay?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p2", "type": "EXAMPLE", "parts": [ { "text": "Payment methods" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p3", "type": "EXAMPLE", "parts": [ { "text": "Where to upload payment proof?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p4", "type": "EXAMPLE", "parts": [ { "text": "How long does payment verification take?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p5", "type": "EXAMPLE", "parts": [ { "text": "How to view my invoice?" } ], "timesAddedCount": 1, "lang": "en" }
+        ] },
+      { "meta": { "id": "10000000-0000-0000-0000-000000000003", "displayName": "schedule_faq", "priority": 500000 },
+        "trainingPhrases": [
+          { "id": "p1", "type": "EXAMPLE", "parts": [ { "text": "What is the class schedule?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p2", "type": "EXAMPLE", "parts": [ { "text": "Weekly timetable" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p3", "type": "EXAMPLE", "parts": [ { "text": "When is the next session?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p4", "type": "EXAMPLE", "parts": [ { "text": "Will I get notified if a class is canceled?" } ], "timesAddedCount": 1, "lang": "en" }
+        ] },
+      { "meta": { "id": "10000000-0000-0000-0000-000000000004", "displayName": "materials_faq", "priority": 500000 },
+        "trainingPhrases": [
+          { "id": "p1", "type": "EXAMPLE", "parts": [ { "text": "Where to find class materials?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p2", "type": "EXAMPLE", "parts": [ { "text": "How to download notes?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p3", "type": "EXAMPLE", "parts": [ { "text": "How to access recordings?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p4", "type": "EXAMPLE", "parts": [ { "text": "I cannot download materials" } ], "timesAddedCount": 1, "lang": "en" }
+        ] },
+      { "meta": { "id": "10000000-0000-0000-0000-000000000005", "displayName": "notifications_faq", "priority": 500000 },
+        "trainingPhrases": [
+          { "id": "p1", "type": "EXAMPLE", "parts": [ { "text": "How do notifications work?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p2", "type": "EXAMPLE", "parts": [ { "text": "Why did I get an enrollment notification?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p3", "type": "EXAMPLE", "parts": [ { "text": "How to stop notifications?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p4", "type": "EXAMPLE", "parts": [ { "text": "Turn off notifications" } ], "timesAddedCount": 1, "lang": "en" }
+        ] },
+      { "meta": { "id": "10000000-0000-0000-0000-000000000006", "displayName": "refund_faq", "priority": 500000 },
+        "trainingPhrases": [
+          { "id": "p1", "type": "EXAMPLE", "parts": [ { "text": "How do refunds work?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p2", "type": "EXAMPLE", "parts": [ { "text": "When will I get my refund?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p3", "type": "EXAMPLE", "parts": [ { "text": "Refund policy" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p4", "type": "EXAMPLE", "parts": [ { "text": "How to request a refund" } ], "timesAddedCount": 1, "lang": "en" }
+        ] },
+      { "meta": { "id": "10000000-0000-0000-0000-000000000007", "displayName": "account_faq", "priority": 500000 },
+        "trainingPhrases": [
+          { "id": "p1", "type": "EXAMPLE", "parts": [ { "text": "How do I update my profile?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p2", "type": "EXAMPLE", "parts": [ { "text": "Change phone number" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p3", "type": "EXAMPLE", "parts": [ { "text": "Update email" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p4", "type": "EXAMPLE", "parts": [ { "text": "Edit profile information" } ], "timesAddedCount": 1, "lang": "en" }
+        ] },
+      { "meta": { "id": "10000000-0000-0000-0000-000000000008", "displayName": "approval_faq", "priority": 500000 },
+        "trainingPhrases": [
+          { "id": "p1", "type": "EXAMPLE", "parts": [ { "text": "How are tutors approved?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p2", "type": "EXAMPLE", "parts": [ { "text": "How are classes approved?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p3", "type": "EXAMPLE", "parts": [ { "text": "Why is my class still pending approval?" } ], "timesAddedCount": 1, "lang": "en" }
+        ] },
+      { "meta": { "id": "10000000-0000-0000-0000-000000000009", "displayName": "announcement_faq", "priority": 500000 },
+        "trainingPhrases": [
+          { "id": "p1", "type": "EXAMPLE", "parts": [ { "text": "How are announcements sent?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p2", "type": "EXAMPLE", "parts": [ { "text": "Broadcast announcements" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p3", "type": "EXAMPLE", "parts": [ { "text": "Where can I read announcements?" } ], "timesAddedCount": 1, "lang": "en" }
+        ] },
+      { "meta": { "id": "10000000-0000-0000-0000-000000000010", "displayName": "reschedule_faq", "priority": 500000 },
+        "trainingPhrases": [
+          { "id": "p1", "type": "EXAMPLE", "parts": [ { "text": "How to reschedule a class?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p2", "type": "EXAMPLE", "parts": [ { "text": "Class canceled" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p3", "type": "EXAMPLE", "parts": [ { "text": "What if I miss a session?" } ], "timesAddedCount": 1, "lang": "en" }
+        ] },
+      { "meta": { "id": "10000000-0000-0000-0000-000000000011", "displayName": "support_faq", "priority": 500000 },
+        "trainingPhrases": [
+          { "id": "p1", "type": "EXAMPLE", "parts": [ { "text": "How to contact support?" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p2", "type": "EXAMPLE", "parts": [ { "text": "Help center" } ], "timesAddedCount": 1, "lang": "en" },
+          { "id": "p3", "type": "EXAMPLE", "parts": [ { "text": "Get help" } ], "timesAddedCount": 1, "lang": "en" }
+        ] }
+    ]
+  }
+}
+
+

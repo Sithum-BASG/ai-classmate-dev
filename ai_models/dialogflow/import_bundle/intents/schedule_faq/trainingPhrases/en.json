@@ -1,0 +1,44 @@
+﻿{
+    "trainingPhrases":  [
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "What is the class schedule?",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "Weekly timetable",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "When is the next session?",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "Will I get notified if a class is canceled?",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            }
+                        ]
+}

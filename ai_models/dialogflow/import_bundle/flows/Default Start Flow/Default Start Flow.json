@@ -1,0 +1,197 @@
+{
+  "name": "00000000-0000-0000-0000-000000000000",
+  "displayName": "Default Start Flow",
+  "description": "AI ClassMate FAQ start flow",
+  "transitionRoutes": [
+    {
+      "intent": "enrollment_faq",
+      "triggerFulfillment": {
+        "messages": [
+          {
+            "text": {
+              "text": ["To enroll: search a class, open it, tap Enroll and confirm seats. You will see the enrollment as Pending until payment is verified."]
+            },
+            "languageCode": "en"
+          }
+        ]
+      },
+      "name": "enrollment_route"
+    },
+    {
+      "intent": "payment_faq",
+      "triggerFulfillment": {
+        "messages": [
+          {
+            "text": {
+              "text": ["Payments: bank transfer, card, cash and online methods. Upload your payment proof on the invoice screen. Verification usually completes within 24-48 hours."]
+            },
+            "languageCode": "en"
+          }
+        ]
+      },
+      "name": "payment_route"
+    },
+    {
+      "intent": "schedule_faq",
+      "triggerFulfillment": {
+        "messages": [
+          {
+            "text": {
+              "text": ["Open Weekly Timetable to view upcoming sessions. Start times are local. If a class is canceled or changed we will notify you automatically."]
+            },
+            "languageCode": "en"
+          }
+        ]
+      },
+      "name": "schedule_route"
+    },
+    {
+      "intent": "materials_faq",
+      "triggerFulfillment": {
+        "messages": [
+          {
+            "text": {
+              "text": ["Go to the class page -> Materials to view or download notes and files. Tutors may upload recordings when available. If downloads are disabled please contact the tutor."]
+            },
+            "languageCode": "en"
+          }
+        ]
+      },
+      "name": "materials_route"
+    },
+    {
+      "intent": "notifications_faq",
+      "triggerFulfillment": {
+        "messages": [
+          {
+            "text": {
+              "text": ["We send notifications for enrollment/payment status and schedule changes. You can mute non-critical messages from Settings -> Notifications."]
+            },
+            "languageCode": "en"
+          }
+        ]
+      },
+      "name": "notifications_route"
+    },
+    {
+      "intent": "refund_faq",
+      "triggerFulfillment": {
+        "messages": [
+          {
+            "text": {
+              "text": ["Refunds: if your payment is verified and the tutor cancels or support approves a refund request, we process it to your original payment method within 5-10 business days."]
+            },
+            "languageCode": "en"
+          }
+        ]
+      },
+      "name": "refund_route"
+    },
+    {
+      "intent": "account_faq",
+      "triggerFulfillment": {
+        "messages": [
+          {
+            "text": {
+              "text": ["Update your profile from Profile -> Edit. You can change name, grade and area. Email changes require re-verification; phone changes require OTP."]
+            },
+            "languageCode": "en"
+          }
+        ]
+      },
+      "name": "account_route"
+    },
+    {
+      "intent": "approval_faq",
+      "triggerFulfillment": {
+        "messages": [
+          {
+            "text": {
+              "text": ["Tutor and class approvals: admins review documents for authenticity and schedule conflicts. Class status changes from Draft to Published once approved."]
+            },
+            "languageCode": "en"
+          }
+        ]
+      },
+      "name": "approval_route"
+    },
+    {
+      "intent": "announcement_faq",
+      "triggerFulfillment": {
+        "messages": [
+          {
+            "text": {
+              "text": ["Admins and tutors can broadcast announcements. You can read all recent announcements from Home -> Announcements and receive push notifications."]
+            },
+            "languageCode": "en"
+          }
+        ]
+      },
+      "name": "announcement_route"
+    },
+    {
+      "intent": "reschedule_faq",
+      "triggerFulfillment": {
+        "messages": [
+          {
+            "text": {
+              "text": ["To reschedule, contact the tutor from the class page. If a session is canceled by the tutor, a new date/time will be posted and you will be notified."]
+            },
+            "languageCode": "en"
+          }
+        ]
+      },
+      "name": "reschedule_route"
+    },
+    {
+      "intent": "support_faq",
+      "triggerFulfillment": {
+        "messages": [
+          {
+            "text": {
+              "text": ["Need help? Email support@classmate.lk or use Help -> Contact Support in the app. Include your user ID and the class/enrollment ID for faster assistance."]
+            },
+            "languageCode": "en"
+          }
+        ]
+      },
+      "name": "support_route"
+    }
+  ],
+  "eventHandlers": [
+    {
+      "event": "sys.no-match-default",
+      "triggerFulfillment": {
+        "messages": [
+          {
+            "text": {
+              "text": ["Sorry, I did not catch that. Try asking about enrollment, payments, schedule, materials, notifications or refunds."]
+            },
+            "languageCode": "en"
+          }
+        ]
+      },
+      "name": "no_match_handler"
+    },
+    {
+      "event": "sys.no-input-default",
+      "triggerFulfillment": {
+        "messages": [
+          {
+            "text": {
+              "text": ["Are you still there? You can ask me about enrollment, payments, schedule or materials."]
+            },
+            "languageCode": "en"
+          }
+        ]
+      },
+      "name": "no_input_handler"
+    }
+  ],
+  "nluSettings": {
+    "modelType": "MODEL_TYPE_ADVANCED",
+    "classificationThreshold": 0.3
+  }
+}
+
+

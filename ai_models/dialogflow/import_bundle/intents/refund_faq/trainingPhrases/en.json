@@ -1,0 +1,44 @@
+﻿{
+    "trainingPhrases":  [
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "How do refunds work?",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "When will I get my refund?",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "Refund policy",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "How to request a refund",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            }
+                        ]
+}

@@ -1,0 +1,200 @@
+{
+  "displayName": "AI ClassMate FAQ",
+  "defaultLanguageCode": "en",
+  "timeZone": "Asia/Colombo",
+  "startFlow": "projects/-/locations/-/agents/-/flows/00000000-0000-0000-0000-000000000000",
+  "flows": [
+    {
+      "name": "projects/-/locations/-/agents/-/flows/00000000-0000-0000-0000-000000000000",
+      "displayName": "Start Flow",
+      "transitionRoutes": [
+        {
+          "intent": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000001",
+          "triggerFulfillment": {
+            "messages": [ { "text": { "text": [ "To enroll: search a class, open it, tap Enroll and confirm seats. You will see the enrollment as Pending until payment is verified." ] } } ]
+          }
+        },
+        {
+          "intent": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000002",
+          "triggerFulfillment": {
+            "messages": [ { "text": { "text": [ "Payments: bank transfer, card, cash and online methods. Upload your payment proof on the invoice screen. Verification usually completes within 24-48 hours." ] } } ]
+          }
+        },
+        {
+          "intent": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000003",
+          "triggerFulfillment": {
+            "messages": [ { "text": { "text": [ "Open Weekly Timetable to view upcoming sessions. Start times are local. If a class is canceled or changed we will notify you automatically." ] } } ]
+          }
+        },
+        {
+          "intent": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000004",
+          "triggerFulfillment": {
+            "messages": [ { "text": { "text": [ "Go to the class page -> Materials to view or download notes and files. Tutors may upload recordings when available. If downloads are disabled please contact the tutor." ] } } ]
+          }
+        },
+        {
+          "intent": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000005",
+          "triggerFulfillment": {
+            "messages": [ { "text": { "text": [ "We send notifications for enrollment/payment status and schedule changes. You can mute non-critical messages from Settings -> Notifications." ] } } ]
+          }
+        },
+        {
+          "intent": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000006",
+          "triggerFulfillment": {
+            "messages": [ { "text": { "text": [ "Refunds: if your payment is verified and the tutor cancels or support approves a refund request, we process it to your original payment method within 5-10 business days." ] } } ]
+          }
+        },
+        {
+          "intent": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000007",
+          "triggerFulfillment": {
+            "messages": [ { "text": { "text": [ "Update your profile from Profile -> Edit. You can change name, grade and area. Email changes require re-verification; phone changes require OTP." ] } } ]
+          }
+        },
+        {
+          "intent": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000008",
+          "triggerFulfillment": {
+            "messages": [ { "text": { "text": [ "Tutor and class approvals: admins review documents for authenticity and schedule conflicts. Class status changes from Draft to Published once approved." ] } } ]
+          }
+        },
+        {
+          "intent": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000009",
+          "triggerFulfillment": {
+            "messages": [ { "text": { "text": [ "Admins and tutors can broadcast announcements. You can read all recent announcements from Home -> Announcements and receive push notifications." ] } } ]
+          }
+        },
+        {
+          "intent": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000010",
+          "triggerFulfillment": {
+            "messages": [ { "text": { "text": [ "To reschedule, contact the tutor from the class page. If a session is canceled by the tutor, a new date/time will be posted and you will be notified." ] } } ]
+          }
+        },
+        {
+          "intent": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000011",
+          "triggerFulfillment": {
+            "messages": [ { "text": { "text": [ "Need help? Email support@classmate.lk or use Help -> Contact Support in the app. Include your user ID and the class/enrollment ID for faster assistance." ] } } ]
+          }
+        }
+      ],
+      "eventHandlers": [
+        {
+          "event": "sys.no-match-default",
+          "triggerFulfillment": { "messages": [ { "text": { "text": [ "Sorry, I did not catch that. Try asking about enrollment, payments, schedule, materials, notifications or refunds." ] } } ] }
+        },
+        {
+          "event": "sys.no-input-default",
+          "triggerFulfillment": { "messages": [ { "text": { "text": [ "Are you still there? You can ask me about enrollment, payments, schedule or materials." ] } } ] }
+        }
+      ]
+    }
+  ],
+  "intents": [
+    {
+      "name": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000001",
+      "displayName": "enrollment_faq",
+      "trainingPhrases": [
+        { "parts": [ { "text": "How do I enroll in a class?" } ] },
+        { "parts": [ { "text": "What is the enrollment process?" } ] },
+        { "parts": [ { "text": "How can a student join a class?" } ] },
+        { "parts": [ { "text": "How to register for a class?" } ] },
+        { "parts": [ { "text": "How to enroll from the app?" } ] }
+      ]
+    },
+    {
+      "name": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000002",
+      "displayName": "payment_faq",
+      "trainingPhrases": [
+        { "parts": [ { "text": "How do I pay?" } ] },
+        { "parts": [ { "text": "Payment methods" } ] },
+        { "parts": [ { "text": "Where to upload payment proof?" } ] },
+        { "parts": [ { "text": "How long does payment verification take?" } ] },
+        { "parts": [ { "text": "How to view my invoice?" } ] }
+      ]
+    },
+    {
+      "name": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000003",
+      "displayName": "schedule_faq",
+      "trainingPhrases": [
+        { "parts": [ { "text": "What is the class schedule?" } ] },
+        { "parts": [ { "text": "Weekly timetable" } ] },
+        { "parts": [ { "text": "When is the next session?" } ] },
+        { "parts": [ { "text": "Will I get notified if a class is canceled?" } ] }
+      ]
+    },
+    {
+      "name": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000004",
+      "displayName": "materials_faq",
+      "trainingPhrases": [
+        { "parts": [ { "text": "Where to find class materials?" } ] },
+        { "parts": [ { "text": "How to download notes?" } ] },
+        { "parts": [ { "text": "How to access recordings?" } ] },
+        { "parts": [ { "text": "I cannot download materials" } ] }
+      ]
+    },
+    {
+      "name": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000005",
+      "displayName": "notifications_faq",
+      "trainingPhrases": [
+        { "parts": [ { "text": "How do notifications work?" } ] },
+        { "parts": [ { "text": "Why did I get an enrollment notification?" } ] },
+        { "parts": [ { "text": "How to stop notifications?" } ] },
+        { "parts": [ { "text": "Turn off notifications" } ] }
+      ]
+    },
+    {
+      "name": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000006",
+      "displayName": "refund_faq",
+      "trainingPhrases": [
+        { "parts": [ { "text": "How do refunds work?" } ] },
+        { "parts": [ { "text": "When will I get my refund?" } ] },
+        { "parts": [ { "text": "Refund policy" } ] },
+        { "parts": [ { "text": "How to request a refund" } ] }
+      ]
+    },
+    {
+      "name": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000007",
+      "displayName": "account_faq",
+      "trainingPhrases": [
+        { "parts": [ { "text": "How do I update my profile?" } ] },
+        { "parts": [ { "text": "Change phone number" } ] },
+        { "parts": [ { "text": "Update email" } ] },
+        { "parts": [ { "text": "Edit profile information" } ] }
+      ]
+    },
+    {
+      "name": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000008",
+      "displayName": "approval_faq",
+      "trainingPhrases": [
+        { "parts": [ { "text": "How are tutors approved?" } ] },
+        { "parts": [ { "text": "How are classes approved?" } ] },
+        { "parts": [ { "text": "Why is my class still pending approval?" } ] }
+      ]
+    },
+    {
+      "name": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000009",
+      "displayName": "announcement_faq",
+      "trainingPhrases": [
+        { "parts": [ { "text": "How are announcements sent?" } ] },
+        { "parts": [ { "text": "Broadcast announcements" } ] },
+        { "parts": [ { "text": "Where can I read announcements?" } ] }
+      ]
+    },
+    {
+      "name": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000010",
+      "displayName": "reschedule_faq",
+      "trainingPhrases": [
+        { "parts": [ { "text": "How to reschedule a class?" } ] },
+        { "parts": [ { "text": "Class canceled" } ] },
+        { "parts": [ { "text": "What if I miss a session?" } ] }
+      ]
+    },
+    {
+      "name": "projects/-/locations/-/agents/-/intents/10000000-0000-0000-0000-000000000011",
+      "displayName": "support_faq",
+      "trainingPhrases": [
+        { "parts": [ { "text": "How to contact support?" } ] },
+        { "parts": [ { "text": "Help center" } ] },
+        { "parts": [ { "text": "Get help" } ] }
+      ]
+    }
+  ]
+}

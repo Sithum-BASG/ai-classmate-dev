@@ -1,0 +1,54 @@
+﻿{
+    "trainingPhrases":  [
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "How do I pay?",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "Payment methods",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "Where to upload payment proof?",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "How long does payment verification take?",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "How to view my invoice?",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            }
+                        ]
+}

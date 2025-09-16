@@ -1,0 +1,44 @@
+﻿{
+    "trainingPhrases":  [
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "How do I update my profile?",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "Change phone number",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "Update email",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            },
+                            {
+                                "languageCode":  "en",
+                                "parts":  [
+                                              {
+                                                  "text":  "Edit profile information",
+                                                  "auto":  true
+                                              }
+                                          ],
+                                "repeatCount":  1
+                            }
+                        ]
+}
