@@ -1,6 +1,10 @@
 import * as functions from 'firebase-functions';
 import { REGION } from './config';
 import { initializeAdmin } from './init';
+export { onUserCreate } from './auth_triggers';
+export { setUserRole, approveTutor, revokeTutor } from './roles';
+export { publishClass, enrollInClass, submitPaymentProof } from './core';
+export { registerFcmToken } from './fcm';
 
 initializeAdmin();
 
