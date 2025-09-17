@@ -14,10 +14,10 @@ service firebase.storage {
       allow write: if signedIn() && uid() == userId;
     }
 
-    // Class materials: class_materials/{classId}/{fileName}
-    // Only class tutor (approved) or admin can upload/delete; reads allowed if class published
-    match /class_materials/{classId}/{fileName} {
-      allow read: if true; // Public download links are acceptable; app can gate UI if needed
+    // Class materials: class_materials/{classId}/{materialId}/{fileName}
+    // Only the class tutor (approved) or admin can write/delete; reads allowed if class is published
+    match /class_materials/{classId}/{materialId}/{fileName} {
+      allow read: if true;
       allow write: if isAdmin() || (isTutor() && tutorApproved());
       allow delete: if isAdmin() || (isTutor() && tutorApproved());
     }

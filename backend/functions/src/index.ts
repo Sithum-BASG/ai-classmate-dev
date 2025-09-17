@@ -7,6 +7,8 @@ export { publishClass, enrollInClass, submitPaymentProof } from './core';
 export { registerFcmToken } from './fcm';
 export { getRecommendations, getSubjectForecast, getClassDemandForecast, getMyClassDemandForecast } from './ai';
 export { getRecommendationsRealtime } from './recs_realtime';
+export { initMaterialUpload } from './materials';
+export { sendMessage, onMessageCreate } from './messaging';
 
 initializeAdmin();
 
