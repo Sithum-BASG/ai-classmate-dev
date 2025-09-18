@@ -151,7 +151,9 @@ export const getRecommendationsRealtime = functions
     if (instances.length === 0) return { results: [] };
 
     // Call Vertex endpoint
-    const endpointId = process.env.RECS_ENDPOINT_ID || '941353477190189056';
+    // Allow override via env or functions config
+    const cfg = (functions.config() as any) || {};
+    const endpointId = process.env.RECS_ENDPOINT_ID || cfg.recs?.endpoint_id || '941353477190189056';
     const url = `https://asia-south1-aiplatform.googleapis.com/v1/projects/${DATA_PLATFORM.dataProjectId}/locations/asia-south1/endpoints/${endpointId}:predict`;
     const token = await getAccessToken();
     const resp = await fetch(url, {
