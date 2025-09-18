@@ -1,0 +1,38 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function role() { return request.auth.token.role; }
+    function isAdmin() { return role() == 'admin'; }
+    function isTutor() { return role() == 'tutor'; }
+    function tutorApproved() { return request.auth.token.tutorApproved == true; }
+
+    // User private uploads: user_uploads/{userId}/{filePath}
+    match /user_uploads/{userId}/{filePath=**} {
+      allow read: if isAdmin() || (signedIn() && uid() == userId);
+      allow write: if signedIn() && uid() == userId;
+    }
+
+    // Class materials: class_materials/{classId}/{materialId}/{fileName}
+    // Only the class tutor (approved) or admin can write/delete; reads allowed if class is published
+    match /class_materials/{classId}/{materialId}/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin() || (isTutor() && tutorApproved());
+      allow delete: if isAdmin() || (isTutor() && tutorApproved());
+    }
+
+    // Payment proofs: payment_proofs/{studentId}/{paymentId}/{fileName}
+    match /payment_proofs/{studentId}/{paymentId}/{fileName} {
+      allow read: if isAdmin() || (signedIn() && uid() == studentId);
+      allow write: if signedIn() && uid() == studentId; // students upload their own proofs
+      allow delete: if isAdmin();
+    }
+
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

@@ -1,0 +1,148 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function role() { return request.auth.token.role; }
+    function isAdmin() { return role() == 'admin'; }
+    function isTutor() { return role() == 'tutor'; }
+    function isStudent() { return role() == 'student'; }
+    function tutorApproved() { return request.auth.token.tutorApproved == true; }
+    function isSelf(targetUserId) { return signedIn() && uid() == targetUserId; }
+
+    function getClass(classId) {
+      return get(/databases/$(db)/documents/classes/$(classId));
+    }
+    function classIsPublished(classId) {
+      return getClass(classId).data.status == 'published';
+    }
+
+    // USERS: users/{userId}
+    match /users/{userId} {
+      allow read: if isAdmin() || isSelf(userId);
+      allow create: if isSelf(userId);
+      // Owners may update non-privileged fields only (role/status immutable by owner)
+      allow update: if isSelf(userId)
+                    && request.resource.data.role == resource.data.role
+                    && request.resource.data.status == resource.data.status
+                    || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // STUDENT PROFILE: student_profiles/{userId}
+    match /student_profiles/{userId} {
+      allow read: if isAdmin() || isSelf(userId);
+      allow create, update: if isAdmin() || isSelf(userId);
+      allow delete: if isAdmin();
+    }
+
+    // TUTOR PROFILE: tutor_profiles/{userId}
+    // Public can read approved tutor profiles; tutors/admins can read their own.
+    match /tutor_profiles/{userId} {
+      allow read: if isAdmin() || isSelf(userId) || (resource.data.status == 'approved');
+      allow create: if isSelf(userId);
+      // Tutors can update own profile except review/status fields; admins can update all
+      allow update: if (isSelf(userId)
+                      && request.resource.data.status == resource.data.status
+                      && request.resource.data.reviewed_by == resource.data.reviewed_by
+                      && request.resource.data.reviewed_at == resource.data.reviewed_at)
+                      || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // CLASSES: classes/{classId}
+    // Students can read published; tutors can read their own; admins can read all
+    // Only admins (or server via Admin SDK) may publish/modify status
+    match /classes/{classId} {
+      allow read: if isAdmin()
+                  || resource.data.status == 'published'
+                  || (isTutor() && resource.data.tutorId == uid());
+      allow create: if isTutor() && tutorApproved(); // tutor drafts via app are allowed
+      allow update: if (isTutor() && tutorApproved() && resource.data.tutorId == uid()
+                        && request.resource.data.status == resource.data.status) // tutors can't change status directly
+                        || isAdmin();
+      allow delete: if isAdmin();
+
+      // Class sessions as subcollection: classes/{classId}/sessions/{sessionId}
+      match /sessions/{sessionId} {
+        allow read: if isAdmin()
+                    || (isTutor() && getClass(classId).data.tutorId == uid())
+                    || classIsPublished(classId);
+        allow create, update, delete: if isAdmin()
+                                      || (isTutor() && tutorApproved() && getClass(classId).data.tutorId == uid());
+      }
+
+      // Class announcements subcollection
+      match /announcements/{announcementId} {
+        allow read: if isAdmin()
+                    || classIsPublished(classId)
+                    || (isTutor() && getClass(classId).data.tutorId == uid());
+        allow create, update, delete: if isAdmin()
+                                      || (isTutor() && getClass(classId).data.tutorId == uid());
+      }
+
+      // Class materials metadata subcollection (for Storage files)
+      match /materials/{materialId} {
+        allow read: if isAdmin()
+                    || classIsPublished(classId)
+                    || (isTutor() && getClass(classId).data.tutorId == uid());
+        allow create, update, delete: if isAdmin()
+                                      || (isTutor() && tutorApproved() && getClass(classId).data.tutorId == uid());
+      }
+    }
+
+    // ENROLLMENTS: enrollments/{enrollmentId}
+    // Read: owner student or admin or tutor of the class
+    match /enrollments/{enrollmentId} {
+      allow read: if isAdmin()
+                  || (signedIn() && resource.data.studentId == uid())
+                  || (isTutor() && getClass(resource.data.classId).data.tutorId == uid());
+      // Clients should not create/confirm enrollments directly (use Cloud Functions)
+      allow create, update, delete: if false;
+    }
+
+    // INVOICES: invoices/{invoiceId}
+    match /invoices/{invoiceId} {
+      allow read: if isAdmin()
+                  || (signedIn() && resource.data.studentId == uid());
+      allow create, update, delete: if false; // Managed by Functions
+    }
+
+    // PAYMENTS: payments/{paymentId}
+    // Students can create 'submitted' payments for their own invoice; status changes only by admin
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.studentId == uid());
+      allow create: if signedIn()
+                    && request.resource.data.studentId == uid()
+                    && request.resource.data.status == 'submitted';
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // GLOBAL ANNOUNCEMENTS: announcements/{id}
+    match /announcements/{id} {
+      allow read: if true; // public
+      allow create, update, delete: if isAdmin();
+    }
+
+    // MESSAGES per-user: users/{userId}/messages/{messageId}
+    match /users/{userId}/messages/{messageId} {
+      allow read: if isSelf(userId) || isAdmin();
+      allow create: if isSelf(userId) || isAdmin();
+      allow update, delete: if isSelf(userId) || isAdmin();
+    }
+
+    // NOTIFICATIONS per-user: users/{userId}/notifications/{notificationId}
+    match /users/{userId}/notifications/{notificationId} {
+      allow read: if isSelf(userId) || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

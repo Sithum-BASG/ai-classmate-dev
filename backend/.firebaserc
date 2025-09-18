@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "default": "ai-classmate-dev",
+    "dev": "ai-classmate-dev",
+    "prod": "ai-classmate-prod"
+  },
+  "targets": {},
+  "etags": {}
+}
