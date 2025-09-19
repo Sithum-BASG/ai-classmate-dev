@@ -32,4 +32,21 @@ class StudentProfile {
           List<String>.from(map['subjects_of_interest'] ?? <String>[]),
     );
   }
+
+  StudentProfile copyWith({
+    String? uid,
+    String? fullName,
+    int? grade,
+    String? areaCode,
+    List<String>? subjectCodesOfInterest,
+  }) {
+    return StudentProfile(
+      uid: uid ?? this.uid,
+      fullName: fullName ?? this.fullName,
+      grade: grade ?? this.grade,
+      areaCode: areaCode ?? this.areaCode,
+      subjectCodesOfInterest:
+          subjectCodesOfInterest ?? this.subjectCodesOfInterest,
+    );
+  }
 }

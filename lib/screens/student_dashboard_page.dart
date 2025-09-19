@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import '../theme.dart';
 
@@ -11,7 +13,7 @@ class StudentDashboardPage extends StatefulWidget {
 
 class _StudentDashboardPageState extends State<StudentDashboardPage> {
   int _selectedIndex = 0;
-  final String _userName = "John"; // TODO: Get from Firebase Auth
+  String _userName = "...";
   final TextEditingController _searchController = TextEditingController();
 
   final List<Map<String, dynamic>> _enrolledClasses = [
@@ -83,6 +85,36 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserName();
+  }
+
+  Future<void> _loadUserName() async {
+    final user = FirebaseAuth.instance.currentUser;
+    String name = user?.displayName?.trim() ?? '';
+    if (name.isEmpty && user != null) {
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('student_profiles')
+            .doc(user.uid)
+            .get();
+        final data = snap.data();
+        if (data != null) {
+          name = (data['full_name'] as String?)?.trim() ?? '';
+        }
+      } catch (_) {
+        // ignore and fallback
+      }
+    }
+    if (name.isEmpty && user?.email != null) {
+      name = user!.email!.split('@').first;
+    }
+    if (!mounted) return;
+    setState(() => _userName = name.isEmpty ? 'Student' : name);
   }
 
   @override

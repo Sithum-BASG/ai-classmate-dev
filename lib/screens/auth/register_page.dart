@@ -4,6 +4,8 @@ import '../../theme.dart';
 import '../../config/subjects.dart';
 import '../../models/student_profile.dart';
 import '../../config/areas.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../services/auth_service.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -19,6 +21,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmController = TextEditingController();
   bool _obscure = true;
+  bool _loading = false;
   int? _grade;
   String? _areaCode;
   final Set<String> _selectedSubjects = <String>{};
@@ -32,7 +35,7 @@ class _RegisterPageState extends State<RegisterPage> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_grade == null || _areaCode == null || _selectedSubjects.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -40,18 +43,33 @@ class _RegisterPageState extends State<RegisterPage> {
       );
       return;
     }
-    final StudentProfile profile = StudentProfile(
-      uid: 'TEMP',
-      fullName: _nameController.text.trim(),
-      grade: _grade!,
-      areaCode: _areaCode!,
-      subjectCodesOfInterest: _selectedSubjects.toList(),
-    );
-    // ignore: unused_local_variable
-    final map = profile.toMap();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Account details validated.')),
-    );
+    setState(() => _loading = true);
+    try {
+      final profile = StudentProfile(
+        uid: 'TEMP',
+        fullName: _nameController.text.trim(),
+        grade: _grade!,
+        areaCode: _areaCode!,
+        subjectCodesOfInterest: _selectedSubjects.toList(),
+      );
+      final auth = AuthService();
+      await auth.signUpWithEmail(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        fullName: _nameController.text.trim(),
+        profile: profile,
+      );
+      if (!mounted) return;
+      context.go('/student');
+    } on FirebaseAuthException catch (e) {
+      final msg = e.message ?? 'Sign up failed';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Unexpected error')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -212,8 +230,17 @@ class _RegisterPageState extends State<RegisterPage> {
                   ),
                   const SizedBox(height: 20),
                   ElevatedButton(
-                    onPressed: _submit,
-                    child: const Text('Create Account'),
+                    onPressed: _loading ? null : _submit,
+                    child: _loading
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation(Colors.white),
+                            ),
+                          )
+                        : const Text('Create Account'),
                   ),
                   const SizedBox(height: 12),
                   TextButton(
