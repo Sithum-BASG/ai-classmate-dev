@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -11,9 +13,15 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  String? _profileImagePath; // TODO: Get from Firebase Storage
-  final String _userName = "John Smith";
-  final String _userGrade = "Grade 12 Student";
+  String? _profileImagePath; // Placeholder; storage integration later
+  String _userName = '';
+  String _userGradeLabel = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +108,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    _userName,
+                    _userName.isEmpty ? 'Student' : _userName,
                     style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -109,7 +117,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _userGrade,
+                    _userGradeLabel,
                     style: TextStyle(
                       fontSize: 16,
                       color: Colors.grey[600],
@@ -194,30 +202,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     'Logout',
                     'Sign out of your account',
                     () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Logout'),
-                          content:
-                              const Text('Are you sure you want to logout?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Cancel'),
-                            ),
-                            FilledButton(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                context.go('/');
-                              },
-                              style: FilledButton.styleFrom(
-                                backgroundColor: Colors.red,
-                              ),
-                              child: const Text('Logout'),
-                            ),
-                          ],
-                        ),
-                      );
+                      _confirmAndLogout();
                     },
                     iconColor: Colors.red,
                     showArrow: false,
@@ -355,6 +340,69 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _loadUserProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      context.go('/auth');
+      return;
+    }
+    String name = user.displayName?.trim() ?? '';
+    String gradeLabel = '';
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('student_profiles')
+          .doc(user.uid)
+          .get();
+      final data = doc.data();
+      if (data != null) {
+        name = (name.isEmpty
+            ? ((data['full_name'] as String?) ?? '').trim()
+            : name);
+        final int? grade = (data['grade'] is int)
+            ? data['grade'] as int
+            : int.tryParse('${data['grade']}');
+        if (grade != null) gradeLabel = 'Grade $grade Student';
+      }
+    } catch (_) {
+      // ignore Firestore errors and fallback
+    }
+    if (name.isEmpty && user.email != null) {
+      name = user.email!.split('@').first;
+    }
+    if (!mounted) return;
+    setState(() {
+      _userName = name.isEmpty ? 'Student' : name;
+      _userGradeLabel = gradeLabel;
+    });
+  }
+
+  void _confirmAndLogout() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await FirebaseAuth.instance.signOut();
+              if (!mounted) return;
+              context.go('/auth');
+            },
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Logout'),
+          ),
+        ],
       ),
     );
   }
