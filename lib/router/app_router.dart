@@ -11,6 +11,10 @@ import '../widgets/chatbot_fab.dart';
 import '../screens/auth/student_auth_welcome_page.dart';
 import '../screens/auth/login_page.dart';
 import '../screens/auth/register_page.dart';
+import '../screens/auth/tutor_auth_welcome_page.dart';
+import '../screens/auth/tutor_login_page.dart';
+import '../screens/auth/tutor_register_page.dart';
+import '../screens/auth/tutor_pending_page.dart';
 
 // Tutor screens
 import '../screens/tutor/tutor_dashboard_page.dart';
@@ -35,12 +39,17 @@ final GoRouter appRouter = GoRouter(
     final String dest = state.matchedLocation;
     final bool goingToAuth = dest.startsWith('/auth');
     final bool goingToStudent = dest.startsWith('/student');
+    final bool goingToTutor = dest == '/tutor';
 
     if (!loggedIn && goingToStudent) {
       return '/auth';
     }
     if (loggedIn && goingToAuth) {
       return '/student';
+    }
+    // Tutor: require login; approval gating handled in TutorDashboard
+    if (!loggedIn && goingToTutor) {
+      return '/tutor/auth';
     }
     return null;
   },
@@ -54,6 +63,23 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/auth',
       builder: (context, state) => const StudentAuthWelcomePage(),
+    ),
+    // Tutor Auth Routes
+    GoRoute(
+      path: '/tutor/auth',
+      builder: (context, state) => const TutorAuthWelcomePage(),
+    ),
+    GoRoute(
+      path: '/tutor/auth/login',
+      builder: (context, state) => const TutorLoginPage(),
+    ),
+    GoRoute(
+      path: '/tutor/auth/register',
+      builder: (context, state) => const TutorRegisterPage(),
+    ),
+    GoRoute(
+      path: '/tutor/pending',
+      builder: (context, state) => const TutorPendingPage(),
     ),
     GoRoute(
       path: '/auth/login',

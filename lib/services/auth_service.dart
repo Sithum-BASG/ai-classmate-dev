@@ -37,4 +37,14 @@ class AuthService {
   }) {
     return _auth.signInWithEmailAndPassword(email: email, password: password);
   }
+
+  Future<bool> isTutorApproved(String uid) async {
+    final doc = await _db.collection('tutor_profiles').doc(uid).get();
+    if (!doc.exists) return false;
+    final data = doc.data();
+    if (data == null) return false;
+    final status = (data['status'] as String?) ?? '';
+    final approvedFlag = data['approved'] == true;
+    return status == 'approved' || approvedFlag;
+  }
 }
