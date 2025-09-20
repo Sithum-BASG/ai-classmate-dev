@@ -179,8 +179,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                 title: "I'm a Student",
                                 subtitle:
                                     'Find and connect with qualified tutors',
-                                onTap: () => _showRoleConfirmation(
-                                    'Student', '/student'),
+                                onTap: () =>
+                                    _showRoleConfirmation('Student', '/auth'),
                               ),
                             ),
                           ),
@@ -197,8 +197,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                 title: "I'm a Tutor",
                                 subtitle:
                                     'Manage classes and connect with students',
-                                onTap: () =>
-                                    _showRoleConfirmation('Tutor', '/tutor'),
+                                onTap: () => _showRoleConfirmation(
+                                    'Tutor', '/tutor/auth'),
                               ),
                             ),
                           ),

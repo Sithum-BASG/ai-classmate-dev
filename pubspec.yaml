@@ -11,6 +11,12 @@ dependencies:
     sdk: flutter
   go_router: ^16.2.1
   cupertino_icons: ^1.0.6
+  firebase_core: ^4.1.0
+  firebase_auth: ^6.0.2
+  cloud_firestore: ^6.0.1
+  firebase_storage: ^13.0.1
+  cloud_functions: ^6.0.1
+  firebase_messaging: ^16.0.1
 
 dev_dependencies:
   flutter_test:
@@ -19,3 +25,4 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # assets: (no area CSV needed)

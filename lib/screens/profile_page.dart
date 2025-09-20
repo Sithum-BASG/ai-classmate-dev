@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme.dart';
+import '../config/subjects.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -11,9 +14,15 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  String? _profileImagePath; // TODO: Get from Firebase Storage
-  final String _userName = "John Smith";
-  final String _userGrade = "Grade 12 Student";
+  String? _profileImagePath; // Placeholder; storage integration later
+  String _userName = '';
+  String _userGradeLabel = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +109,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    _userName,
+                    _userName.isEmpty ? 'Student' : _userName,
                     style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -109,7 +118,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _userGrade,
+                    _userGradeLabel,
                     style: TextStyle(
                       fontSize: 16,
                       color: Colors.grey[600],
@@ -117,13 +126,16 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   const SizedBox(height: 20),
                   ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      final updated = await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => const EditProfilePage(),
                         ),
                       );
+                      if (updated == true && mounted) {
+                        _loadUserProfile();
+                      }
                     },
                     icon: const Icon(Icons.edit, size: 18),
                     label: const Text('Edit Profile'),
@@ -194,30 +206,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     'Logout',
                     'Sign out of your account',
                     () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Logout'),
-                          content:
-                              const Text('Are you sure you want to logout?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Cancel'),
-                            ),
-                            FilledButton(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                context.go('/');
-                              },
-                              style: FilledButton.styleFrom(
-                                backgroundColor: Colors.red,
-                              ),
-                              child: const Text('Logout'),
-                            ),
-                          ],
-                        ),
-                      );
+                      _confirmAndLogout();
                     },
                     iconColor: Colors.red,
                     showArrow: false,
@@ -358,10 +347,156 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
   }
+
+  Future<void> _loadUserProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      context.go('/auth');
+      return;
+    }
+    String name = user.displayName?.trim() ?? '';
+    String gradeLabel = '';
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('student_profiles')
+          .doc(user.uid)
+          .get();
+      final data = doc.data();
+      if (data != null) {
+        name = (name.isEmpty
+            ? ((data['full_name'] as String?) ?? '').trim()
+            : name);
+        final int? grade = (data['grade'] is int)
+            ? data['grade'] as int
+            : int.tryParse('${data['grade']}');
+        if (grade != null) gradeLabel = 'Grade $grade Student';
+      }
+    } catch (_) {
+      // ignore Firestore errors and fallback
+    }
+    if (name.isEmpty && user.email != null) {
+      name = user.email!.split('@').first;
+    }
+    if (!mounted) return;
+    setState(() {
+      _userName = name.isEmpty ? 'Student' : name;
+      _userGradeLabel = gradeLabel;
+    });
+  }
+
+  void _confirmAndLogout() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await FirebaseAuth.instance.signOut();
+              if (!mounted) return;
+              context.go('/auth');
+            },
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class EditProfilePage extends StatelessWidget {
+class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
+
+  @override
+  State<EditProfilePage> createState() => _EditProfilePageState();
+}
+
+class _EditProfilePageState extends State<EditProfilePage> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _schoolController = TextEditingController();
+  int? _grade;
+  final Set<String> _selectedSubjects = <String>{};
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      context.go('/auth');
+      return;
+    }
+    _emailController.text = user.email ?? '';
+    _nameController.text = user.displayName ?? '';
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('student_profiles')
+          .doc(user.uid)
+          .get();
+      final data = doc.data();
+      if (data != null) {
+        _nameController.text = (_nameController.text.isEmpty)
+            ? ((data['full_name'] as String?) ?? '')
+            : _nameController.text;
+        _grade = (data['grade'] is int)
+            ? data['grade'] as int
+            : int.tryParse('${data['grade']}');
+        _schoolController.text = (data['school'] as String?) ?? '';
+        _phoneController.text = (data['phone'] as String?) ?? '';
+        final List<dynamic>? subs =
+            data['subjects_of_interest'] as List<dynamic>?;
+        if (subs != null) _selectedSubjects.addAll(subs.map((e) => '$e'));
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() => _saving = true);
+    try {
+      final fullName = _nameController.text.trim();
+      await user.updateDisplayName(fullName);
+      final List<String> subjects = _selectedSubjects.toList();
+      await FirebaseFirestore.instance
+          .collection('student_profiles')
+          .doc(user.uid)
+          .set({
+        'full_name': fullName,
+        'grade': _grade ?? 0,
+        'school': _schoolController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'subjects_of_interest': subjects,
+      }, SetOptions(merge: true));
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Failed to save')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -379,83 +514,97 @@ class EditProfilePage extends StatelessWidget {
           ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Personal Information',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.brandText,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildTextField('Full Name', 'John Smith', Icons.person),
-              _buildTextField(
-                  'Email Address', 'john.smith@email.com', Icons.email),
-              _buildTextField('Phone Number', '+94 77 123 4567', Icons.phone),
-              const SizedBox(height: 24),
-              const Text(
-                'Academic Information',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.brandText,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildDropdownField('Current Grade', 'Grade 12'),
-              _buildTextField(
-                  'School/College', 'Royal College Colombo', Icons.school),
-              _buildTextField('Subjects of Interest',
-                  'Mathematics, Physics, Chemistry', Icons.book),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Profile updated successfully!'),
-                        backgroundColor: AppTheme.brandSecondary,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Form(
+                key: _formKey,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Personal Information',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.brandText,
+                        ),
                       ),
-                    );
-                    Navigator.pop(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.brandPrimary,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'Save Changes',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                      const SizedBox(height: 16),
+                      _textField('Full Name', _nameController, Icons.person,
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Required'
+                              : null),
+                      _textField('Email Address', _emailController, Icons.email,
+                          readOnly: true),
+                      _textField('Phone Number', _phoneController, Icons.phone,
+                          keyboardType: TextInputType.phone),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Academic Information',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.brandText,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _gradeDropdown(),
+                      _textField(
+                          'School/College', _schoolController, Icons.school),
+                      _subjectsChips(),
+                      const SizedBox(height: 32),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _saving ? null : _save,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.brandPrimary,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: _saving
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor:
+                                        AlwaysStoppedAnimation(Colors.white),
+                                  ),
+                                )
+                              : const Text(
+                                  'Save Changes',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 
-  Widget _buildTextField(String label, String value, IconData icon) {
+  Widget _textField(
+      String label, TextEditingController controller, IconData icon,
+      {bool readOnly = false,
+      String? Function(String?)? validator,
+      TextInputType? keyboardType}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
@@ -471,7 +620,10 @@ class EditProfilePage extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           TextFormField(
-            initialValue: value,
+            controller: controller,
+            readOnly: readOnly,
+            validator: validator,
+            keyboardType: keyboardType,
             style: const TextStyle(fontSize: 15),
             decoration: InputDecoration(
               prefixIcon: Icon(icon, size: 20, color: AppTheme.brandPrimary),
@@ -497,24 +649,29 @@ class EditProfilePage extends StatelessWidget {
     );
   }
 
-  Widget _buildDropdownField(String label, String value) {
+  Widget _gradeDropdown() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
+          const Text(
+            'Current Grade',
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
               color: AppTheme.brandText,
             ),
           ),
           const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            value: value,
-            style: const TextStyle(fontSize: 15, color: AppTheme.brandText),
+          DropdownButtonFormField<int>(
+            value: _grade,
+            items: const [6, 7, 8, 9, 10, 11, 12, 13]
+                .map((g) => DropdownMenuItem<int>(
+                      value: g,
+                      child: Text('Grade $g'),
+                    ))
+                .toList(),
             decoration: InputDecoration(
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -532,13 +689,56 @@ class EditProfilePage extends StatelessWidget {
                     const BorderSide(color: AppTheme.brandPrimary, width: 2),
               ),
             ),
-            items: ['Grade 10', 'Grade 11', 'Grade 12', 'Grade 13']
-                .map((grade) => DropdownMenuItem(
-                      value: grade,
-                      child: Text(grade),
-                    ))
-                .toList(),
-            onChanged: (value) {},
+            onChanged: (v) => setState(() => _grade = v),
+            validator: (v) => v == null ? 'Select your grade' : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _subjectsChips() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Subjects of Interest',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.brandText,
+                ),
+              ),
+              if (_selectedSubjects.isNotEmpty)
+                TextButton(
+                  onPressed: () => setState(() => _selectedSubjects.clear()),
+                  child: const Text('Clear all'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final s in kSubjectOptions)
+                FilterChip(
+                  selected: _selectedSubjects.contains(s.code),
+                  label: Text(s.label, style: const TextStyle(fontSize: 12)),
+                  onSelected: (sel) => setState(() {
+                    if (sel) {
+                      _selectedSubjects.add(s.code);
+                    } else {
+                      _selectedSubjects.remove(s.code);
+                    }
+                  }),
+                ),
+            ],
           ),
         ],
       ),
