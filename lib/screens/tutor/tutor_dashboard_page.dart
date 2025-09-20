@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import '../../theme.dart';
 
@@ -59,6 +61,65 @@ class _TutorDashboardPageState extends State<TutorDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _checkApproved(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final approved = snapshot.data == true;
+        if (!approved) {
+          return Scaffold(
+            backgroundColor: AppTheme.brandSurface,
+            appBar: AppBar(title: const Text('Tutor Dashboard')),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.hourglass_top,
+                        size: 64, color: AppTheme.brandPrimary),
+                    const SizedBox(height: 12),
+                    const Text('Your tutor account is awaiting approval.',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    const Text('Please check back later or contact support.'),
+                    const SizedBox(height: 16),
+                    TextButton(
+                        onPressed: () => context.go('/'),
+                        child: const Text('Back to Home')),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+        return _approvedDashboard(context);
+      },
+    );
+  }
+
+  Future<bool> _checkApproved() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('tutor_profiles')
+          .doc(user.uid)
+          .get();
+      final data = doc.data();
+      if (data == null) return false;
+      final status = (data['status'] as String?) ?? '';
+      if (status == 'approved') return true;
+    } catch (_) {}
+    return false;
+  }
+
+  Widget _approvedDashboard(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.brandSurface,
       body: SafeArea(
