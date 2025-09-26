@@ -29,22 +29,24 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       drawer: isMobile ? _buildMobileDrawer() : null,
       appBar: isMobile
           ? AppBar(
-              backgroundColor: const Color(0xFF1A1B3A),
-              title: Text(_getPageTitle()),
+              title: Text(_getPageTitle(),
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w600)),
               leading: Builder(
                 builder: (context) => IconButton(
-                  icon: const Icon(Icons.menu, color: Colors.white),
+                  icon: const Icon(Icons.menu),
                   onPressed: () => Scaffold.of(context).openDrawer(),
                 ),
               ),
               actions: [
                 IconButton(
-                  icon: const Icon(Icons.notifications_outlined,
-                      color: Colors.white),
+                  icon: const Icon(Icons.notifications_outlined),
                   onPressed: () {},
                 ),
                 IconButton(
-                  icon: const Icon(Icons.exit_to_app, color: Colors.white),
+                  icon: const Icon(Icons.exit_to_app),
                   onPressed: () => context.go('/'),
                 ),
               ],
@@ -56,7 +58,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 // Desktop Sidebar
                 Container(
                   width: 260,
-                  color: const Color(0xFF1A1B3A),
+                  color: AppTheme.brandPrimary,
                   child: _buildSidebarContent(),
                 ),
                 // Main Content
@@ -72,10 +74,10 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                           children: [
                             Text(
                               _getPageTitle(),
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.bold),
                             ),
                             const Spacer(),
                             Stack(
@@ -91,8 +93,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                                   child: Container(
                                     width: 8,
                                     height: 8,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.red,
+                                    decoration: BoxDecoration(
+                                      color:
+                                          Theme.of(context).colorScheme.error,
                                       shape: BoxShape.circle,
                                     ),
                                   ),
@@ -125,7 +128,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Widget _buildMobileDrawer() {
     return Drawer(
-      backgroundColor: const Color(0xFF1A1B3A),
+      backgroundColor: AppTheme.brandPrimary,
       child: _buildSidebarContent(),
     );
   }
@@ -147,7 +150,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 ),
                 child: const Icon(
                   Icons.school,
-                  color: Color(0xFF1A1B3A),
+                  color: AppTheme.brandText,
                 ),
               ),
               const SizedBox(width: 12),
@@ -204,9 +207,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected
-              ? Colors.white.withValues(alpha: 0.1)
-              : Colors.transparent,
+          color:
+              isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
           border: Border(
             left: BorderSide(
               color: isSelected ? Colors.white : Colors.transparent,
@@ -297,25 +299,25 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 Icons.people_outline,
                 '247',
                 'Total Students',
-                Colors.blue,
+                AppTheme.brandPrimary,
               ),
               _buildStatCard(
                 Icons.school,
                 '38',
                 'Active Tutors',
-                Colors.green,
+                AppTheme.brandSecondary,
               ),
               _buildStatCard(
                 Icons.book,
                 '145',
                 'Total Classes',
-                Colors.purple,
+                AppTheme.brandPrimaryDark,
               ),
               _buildStatCard(
                 Icons.attach_money,
                 'LKR 185K',
                 'Monthly Revenue',
-                Colors.orange,
+                AppTheme.brandSecondaryDark,
               ),
             ],
           ),
@@ -329,7 +331,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   child: _buildPendingCard(
                     'Tutor Applications Pending',
                     '2 new tutors waiting for approval',
-                    Colors.blue,
+                    AppTheme.brandPrimary,
                     () => setState(() => _selectedIndex = 1),
                   ),
                 ),
@@ -338,7 +340,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   child: _buildPendingCard(
                     'Classes Awaiting Approval',
                     '2 classes need review and approval',
-                    Colors.green,
+                    AppTheme.brandSecondary,
                     () => setState(() => _selectedIndex = 2),
                   ),
                 ),
@@ -350,14 +352,14 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 _buildPendingCard(
                   'Tutor Applications Pending',
                   '2 new tutors waiting for approval',
-                  Colors.blue,
+                  AppTheme.brandPrimary,
                   () => setState(() => _selectedIndex = 1),
                 ),
                 const SizedBox(height: 12),
                 _buildPendingCard(
                   'Classes Awaiting Approval',
                   '2 classes need review and approval',
-                  Colors.green,
+                  AppTheme.brandSecondary,
                   () => setState(() => _selectedIndex = 2),
                 ),
               ],
@@ -366,7 +368,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           _buildPendingCard(
             'Payment Verifications Pending',
             '2 student payments need verification',
-            Colors.orange,
+            AppTheme.brandSecondaryDark,
             () => setState(() => _selectedIndex = 3),
           ),
 
@@ -380,7 +382,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
+                  color: Colors.black.withOpacity(0.05),
                   blurRadius: 4,
                 ),
               ],
@@ -388,34 +390,37 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Recent Activity',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 20),
                 _buildActivityItem(
                   'New tutor application',
                   'Dr. Anoja Perera',
                   '2 min ago',
-                  Colors.blue,
+                  AppTheme.brandPrimary,
                 ),
                 _buildActivityItem(
                   'Payment verified',
                   'Student payment LKR 2,500',
                   '15 min ago',
-                  Colors.green,
+                  AppTheme.brandSecondary,
                 ),
                 _buildActivityItem(
                   'Class approved',
                   'Physics A/L Group Class',
                   '1 hour ago',
-                  Colors.purple,
+                  AppTheme.brandPrimaryDark,
                 ),
                 _buildActivityItem(
                   'Announcement sent',
                   'Platform maintenance notice',
                   '2 hours ago',
-                  Colors.orange,
+                  AppTheme.brandSecondaryDark,
                 ),
               ],
             ),
@@ -439,7 +444,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4),
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4),
         ],
       ),
       child: Column(
@@ -461,7 +466,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             label,
             style: TextStyle(
               fontSize: isMobile ? 11 : 14,
-              color: Colors.grey[600],
+              color: AppTheme.mutedText,
             ),
             textAlign: TextAlign.center,
           ),
@@ -489,7 +494,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           border: Border(left: BorderSide(color: color, width: 4)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
+              color: Colors.black.withOpacity(0.05),
               blurRadius: 4,
             ),
           ],
@@ -512,7 +517,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     subtitle,
                     style: TextStyle(
                       fontSize: isMobile ? 12 : 14,
-                      color: Colors.grey[600],
+                      color: AppTheme.mutedText,
                     ),
                   ),
                 ],
@@ -573,7 +578,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   subtitle,
                   style: TextStyle(
                     fontSize: isMobile ? 12 : 13,
-                    color: Colors.grey[600],
+                    color: AppTheme.mutedText,
                   ),
                 ),
               ],
@@ -583,7 +588,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             time,
             style: TextStyle(
               fontSize: isMobile ? 11 : 12,
-              color: Colors.grey[500],
+              color: AppTheme.mutedText,
             ),
           ),
         ],

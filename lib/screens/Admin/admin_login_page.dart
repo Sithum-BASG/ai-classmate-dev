@@ -50,7 +50,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                         width: isMobile ? 60 : 80,
                         height: isMobile ? 60 : 80,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1A1B3A),
+                          color: AppTheme.brandPrimary,
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Icon(
@@ -65,7 +65,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                         style: TextStyle(
                           fontSize: isMobile ? 24 : 28,
                           fontWeight: FontWeight.bold,
-                          color: const Color(0xFF1A1B3A),
+                          color: AppTheme.brandText,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -88,9 +88,9 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
@@ -101,10 +101,10 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                         children: [
                           Text(
                             'Sign In',
-                            style: TextStyle(
-                              fontSize: isMobile ? 20 : 24,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: (isMobile
+                                    ? Theme.of(context).textTheme.titleLarge
+                                    : Theme.of(context).textTheme.headlineSmall)
+                                ?.copyWith(fontWeight: FontWeight.bold),
                             textAlign: TextAlign.center,
                           ),
                           SizedBox(height: isMobile ? 24 : 32),
@@ -127,6 +127,9 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                               ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(
+                                  color: AppTheme.borderSubtle,
+                                ),
                               ),
                               contentPadding: EdgeInsets.symmetric(
                                 horizontal: 16,
@@ -176,6 +179,9 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                               ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(
+                                  color: AppTheme.borderSubtle,
+                                ),
                               ),
                               contentPadding: EdgeInsets.symmetric(
                                 horizontal: 16,
@@ -215,7 +221,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                                     'Remember me',
                                     style: TextStyle(
                                       fontSize: isMobile ? 13 : 14,
-                                      color: Colors.grey[700],
+                                      color: AppTheme.mutedText,
                                     ),
                                   ),
                                 ],
@@ -242,7 +248,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                             child: ElevatedButton(
                               onPressed: _isLoading ? null : _handleLogin,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF1A1B3A),
+                                backgroundColor: AppTheme.brandPrimary,
                                 foregroundColor: Colors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -262,10 +268,14 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                                     )
                                   : Text(
                                       'Sign In',
-                                      style: TextStyle(
-                                        fontSize: isMobile ? 15 : 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            fontSize: isMobile ? 15 : 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
                                     ),
                             ),
                           ),

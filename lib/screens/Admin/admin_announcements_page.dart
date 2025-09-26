@@ -53,10 +53,10 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
           children: [
             Text(
               'Announcements',
-              style: TextStyle(
-                fontSize: isMobile ? 18 : (isTablet ? 20 : 22),
-                fontWeight: FontWeight.bold,
-              ),
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.bold),
             ),
             SizedBox(height: isMobile ? 16 : 24),
 
@@ -68,7 +68,7 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
+                    color: Colors.black.withOpacity(0.05),
                     blurRadius: 4,
                   ),
                 ],
@@ -87,10 +87,10 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                       Expanded(
                         child: Text(
                           'Create New Announcement',
-                          style: TextStyle(
-                            fontSize: isMobile ? 14 : (isTablet ? 16 : 18),
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                       ),
                     ],
@@ -106,6 +106,9 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                       hintStyle: TextStyle(fontSize: isMobile ? 12 : 14),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(
+                          color: AppTheme.borderSubtle,
+                        ),
                       ),
                       contentPadding: EdgeInsets.symmetric(
                         horizontal: isMobile ? 12 : 16,
@@ -125,6 +128,9 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                       hintStyle: TextStyle(fontSize: isMobile ? 12 : 14),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(
+                          color: AppTheme.borderSubtle,
+                        ),
                       ),
                       contentPadding: EdgeInsets.symmetric(
                         horizontal: isMobile ? 12 : 16,
@@ -144,6 +150,9 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                       labelStyle: TextStyle(fontSize: isMobile ? 12 : 14),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(
+                          color: AppTheme.borderSubtle,
+                        ),
                       ),
                       contentPadding: EdgeInsets.symmetric(
                         horizontal: isMobile ? 12 : 16,
@@ -182,7 +191,7 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                         style: TextStyle(fontSize: isMobile ? 13 : 15),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1A1B3A),
+                        backgroundColor: AppTheme.brandPrimary,
                         foregroundColor: Colors.white,
                       ),
                     ),
@@ -195,10 +204,10 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
             // Recent Announcements
             Text(
               'Recent Announcements',
-              style: TextStyle(
-                fontSize: isMobile ? 16 : 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
 
@@ -222,7 +231,7 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 4,
           ),
         ],
@@ -250,7 +259,7 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                       'To: ${announcement['audience']}',
                       style: TextStyle(
                         fontSize: isMobile ? 11 : 13,
-                        color: Colors.grey[600],
+                        color: AppTheme.mutedText,
                       ),
                     ),
                   ],
@@ -262,13 +271,13 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                   vertical: isMobile ? 4 : 6,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
+                  color: AppTheme.brandPrimary.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   announcement['status'],
                   style: TextStyle(
-                    color: Colors.blue,
+                    color: AppTheme.brandPrimary,
                     fontWeight: FontWeight.w600,
                     fontSize: isMobile ? 10 : 12,
                   ),
@@ -282,7 +291,7 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
             announcement['message'],
             style: TextStyle(
               fontSize: isMobile ? 12 : 14,
-              color: Colors.grey[700],
+              color: AppTheme.mutedText,
             ),
           ),
           const SizedBox(height: 12),
@@ -295,7 +304,7 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                 announcement['date'],
                 style: TextStyle(
                   fontSize: isMobile ? 11 : 12,
-                  color: Colors.grey[500],
+                  color: AppTheme.mutedText,
                 ),
               ),
               if (isMobile)
@@ -330,12 +339,13 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                     ),
                     TextButton.icon(
                       onPressed: () => _deleteAnnouncement(announcement),
-                      icon:
-                          const Icon(Icons.delete, size: 16, color: Colors.red),
-                      label: const Text(
-                        'Delete',
-                        style: TextStyle(color: Colors.red, fontSize: 13),
+                      icon: Icon(
+                        Icons.delete,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.error,
                       ),
+                      label:
+                          const Text('Delete', style: TextStyle(fontSize: 13)),
                     ),
                   ],
                 ),
@@ -349,18 +359,18 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
   void _sendAnnouncement() {
     if (_titleController.text.isEmpty || _messageController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please fill all fields'),
-          backgroundColor: Colors.red,
+        SnackBar(
+          content: const Text('Please fill all fields'),
+          backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
       return;
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Announcement sent successfully'),
-        backgroundColor: Colors.green,
+      SnackBar(
+        content: const Text('Announcement sent successfully'),
+        backgroundColor: AppTheme.brandSecondary,
       ),
     );
 
@@ -384,9 +394,9 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Announcement deleted'),
-        backgroundColor: Colors.red,
+      SnackBar(
+        content: const Text('Announcement deleted'),
+        backgroundColor: Theme.of(context).colorScheme.error,
       ),
     );
   }
