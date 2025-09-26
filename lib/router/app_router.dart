@@ -15,6 +15,9 @@ import '../screens/auth/tutor_auth_welcome_page.dart';
 import '../screens/auth/tutor_login_page.dart';
 import '../screens/auth/tutor_register_page.dart';
 import '../screens/auth/tutor_pending_page.dart';
+// Admin screens
+import '../screens/Admin/admin_dashboard_page.dart';
+import '../screens/Admin/admin_login_page.dart';
 
 // Tutor screens
 import '../screens/tutor/tutor_dashboard_page.dart';
@@ -177,6 +180,10 @@ final GoRouter appRouter = GoRouter(
     // Admin Routes
     GoRoute(
       path: '/admin',
+      builder: (context, state) => const AdminLoginPage(),
+    ),
+    GoRoute(
+      path: '/admin/dashboard',
       builder: (context, state) => const AdminDashboardPage(),
     ),
   ],
@@ -192,24 +199,6 @@ class ClassDetailPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: Text('Class $classId')),
       body: Center(child: Text('Class Detail for ID: $classId')),
-    );
-  }
-}
-
-class AdminDashboardPage extends StatelessWidget {
-  const AdminDashboardPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Admin Dashboard'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/'),
-        ),
-      ),
-      body: const Center(child: Text('Admin Dashboard - Coming Soon')),
     );
   }
 }
