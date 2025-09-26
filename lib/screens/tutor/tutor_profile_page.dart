@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:go_router/go_router.dart';
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../theme.dart';
@@ -86,6 +87,28 @@ class _TutorProfilePageState extends State<TutorProfilePage> {
         builder: (context, snapshot) {
           if (user == null) {
             return const Center(child: Text('Please sign in as a tutor.'));
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Failed to load profile'),
+                    const SizedBox(height: 8),
+                    Text('${snapshot.error}',
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.error)),
+                    const SizedBox(height: 12),
+                    ElevatedButton(
+                      onPressed: () => setState(() {}),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            );
           }
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -584,7 +607,7 @@ class _TutorProfilePageState extends State<TutorProfilePage> {
   }
 
   void _navigateToEditProfile() {
-    context.go('/tutor/profile/edit');
+    context.push('/tutor/profile/edit');
   }
 
   void _showLogoutDialog() {

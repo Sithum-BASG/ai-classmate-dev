@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-// import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme.dart';
 
 class AdminTutorApprovalsPage extends StatefulWidget {
@@ -483,7 +483,11 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
     if (uid == null) return;
     setState(() => _isActionBusy = true);
     try {
-      await _tutorProfiles.doc(uid).update({'status': 'approved'});
+      await _tutorProfiles.doc(uid).update({
+        'status': 'approved',
+        'reviewed_by': FirebaseAuth.instance.currentUser?.uid,
+        'reviewed_at': FieldValue.serverTimestamp(),
+      });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -507,7 +511,7 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
   void _rejectTutor(Map<String, dynamic> tutor) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Reject Tutor'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -527,21 +531,23 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: _isActionBusy
                 ? null
                 : () async {
-                    Navigator.pop(context);
+                    Navigator.pop(dialogContext);
                     final uid = tutor['uid'] as String?;
                     if (uid == null) return;
                     setState(() => _isActionBusy = true);
                     try {
-                      await _tutorProfiles
-                          .doc(uid)
-                          .update({'status': 'rejected'});
+                      await _tutorProfiles.doc(uid).update({
+                        'status': 'rejected',
+                        'reviewed_by': FirebaseAuth.instance.currentUser?.uid,
+                        'reviewed_at': FieldValue.serverTimestamp(),
+                      });
                       if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(

@@ -115,6 +115,14 @@ class _TutorDashboardPageState extends State<TutorDashboardPage> {
       if (data == null) return false;
       final status = (data['status'] as String?) ?? '';
       if (status == 'approved') return true;
+      if (status == 'rejected') {
+        if (mounted) {
+          // Redirect to rejection screen with actions
+          // ignore: use_build_context_synchronously
+          context.go('/tutor/pending?rejected=1');
+        }
+        return false;
+      }
     } catch (_) {}
     return false;
   }

@@ -26,6 +26,7 @@ import '../screens/tutor/tutor_students_page.dart';
 import '../screens/tutor/tutor_messages_page.dart';
 import '../screens/tutor/tutor_profile_page.dart';
 import '../screens/tutor/tutor_edit_profile_page.dart';
+import '../screens/tutor/tutor_reapply_action_page.dart';
 import '../screens/tutor/create_class_page.dart';
 import '../screens/tutor/tutor_class_details_page.dart';
 import '../screens/tutor/tutor_student_details_page.dart';
@@ -82,7 +83,10 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/tutor/pending',
-      builder: (context, state) => const TutorPendingPage(),
+      builder: (context, state) {
+        final rejected = state.uri.queryParameters['rejected'] == '1';
+        return TutorPendingPage(isRejected: rejected);
+      },
     ),
     GoRoute(
       path: '/auth/login',
@@ -153,6 +157,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/tutor/profile/edit',
       builder: (context, state) => const TutorEditProfilePage(),
+    ),
+    GoRoute(
+      path: '/tutor/reapply',
+      builder: (context, state) => const TutorReapplyActionPage(),
     ),
     GoRoute(
       path: '/tutor/subscription',

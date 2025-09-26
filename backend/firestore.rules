@@ -43,11 +43,23 @@ service cloud.firestore {
       allow read: if isAdmin() || isSelf(userId) || (resource.data.status == 'approved');
       allow create: if isSelf(userId);
       // Tutors can update own profile except review/status fields; admins can update all
-      allow update: if (isSelf(userId)
-                      && request.resource.data.status == resource.data.status
+      allow update: if isAdmin()
+                    || (
+                      isSelf(userId)
+                      && !request.resource.data.diff(resource.data)
+                            .changedKeys()
+                            .hasAny(['reviewed_by', 'reviewed_at', 'status'])
+                    )
+                    || (
+                      // Allow self reapply: only change status from rejected -> pending
+                      isSelf(userId)
+                      && request.resource.data.diff(resource.data).changedKeys().size() == 1
+                      && request.resource.data.diff(resource.data).changedKeys().hasAny(['status'])
+                      && resource.data.status == 'rejected'
+                      && request.resource.data.status == 'pending'
                       && request.resource.data.reviewed_by == resource.data.reviewed_by
-                      && request.resource.data.reviewed_at == resource.data.reviewed_at)
-                      || isAdmin();
+                      && request.resource.data.reviewed_at == resource.data.reviewed_at
+                    );
       allow delete: if isAdmin();
     }
 
