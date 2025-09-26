@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+// import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme.dart';
 
 class AdminTutorApprovalsPage extends StatefulWidget {
@@ -10,23 +12,10 @@ class AdminTutorApprovalsPage extends StatefulWidget {
 }
 
 class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
-  final List<Map<String, dynamic>> _pendingTutors = [
-    {
-      'id': 'DAP',
-      'name': 'Dr. Anoja Perera',
-      'email': 'anoja.perera@email.com',
-      'phone': '+94 77 123 4567',
-      'subjects': 'Mathematics A/L, Physics A/L',
-      'experience': '10 years',
-      'qualifications': 'PhD in Mathematics, University of Colombo',
-      'bio':
-          'Experienced mathematics tutor with strong background in A/L preparation.',
-      'locations': ['Colombo 03', 'Colombo 07'],
-      'documents': ['cv.pdf', 'certificate.pdf'],
-      'appliedDate': '2024-12-15',
-      'status': 'pending',
-    },
-  ];
+  final CollectionReference<Map<String, dynamic>> _tutorProfiles =
+      FirebaseFirestore.instance.collection('tutor_profiles');
+  // final FirebaseAuth _auth = FirebaseAuth.instance;
+  bool _isActionBusy = false;
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +81,7 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
               ),
             const SizedBox(height: 24),
 
-            // Stats
+            // Stats (live counts)
             GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -101,62 +90,132 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
               crossAxisSpacing: 16,
               childAspectRatio: isMobile ? 1.2 : 2,
               children: [
-                _buildStatCard(Icons.pending, '2', 'Pending', Colors.orange),
-                _buildStatCard(
-                    Icons.check_circle, '25', 'Approved', Colors.green),
-                _buildStatCard(Icons.cancel, '3', 'Rejected', Colors.red),
+                _buildCountCard(
+                  icon: Icons.pending,
+                  color: Colors.orange,
+                  label: 'Pending',
+                  query: _tutorProfiles.where('status', isEqualTo: 'pending'),
+                ),
+                _buildCountCard(
+                  icon: Icons.check_circle,
+                  color: Colors.green,
+                  label: 'Approved',
+                  query: _tutorProfiles.where('status', isEqualTo: 'approved'),
+                ),
+                _buildCountCard(
+                  icon: Icons.cancel,
+                  color: Colors.red,
+                  label: 'Rejected',
+                  query: _tutorProfiles.where('status', isEqualTo: 'rejected'),
+                ),
               ],
             ),
             const SizedBox(height: 24),
 
             // Pending Tutors
-            ..._pendingTutors.map((tutor) => _buildTutorCard(tutor, isMobile)),
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _tutorProfiles
+                  .where('status', isEqualTo: 'pending')
+                  .orderBy(FieldPath.documentId)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Text('Error: ${snapshot.error}');
+                }
+                final docs = snapshot.data?.docs ?? [];
+                if (docs.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Text(
+                      'No pending tutor applications',
+                      style: TextStyle(color: AppTheme.mutedText),
+                    ),
+                  );
+                }
+                return Column(
+                  children: docs.map((doc) {
+                    final data = doc.data();
+                    return _buildTutorCard(
+                      {
+                        'uid': doc.id,
+                        'name': data['full_name'] ?? 'Unknown',
+                        'email': data['email'] ?? '',
+                        'phone': data['phone'] ?? '',
+                        'subjects':
+                            (data['subjects_taught'] as List?)?.join(', ') ??
+                                '-',
+                        'experience': data['experience'] ?? '-',
+                        'qualifications': data['qualifications'] ?? '-',
+                        'bio': data['bio'] ?? '-',
+                        'area_code': data['area_code'] ?? '-',
+                        'status': data['status'] ?? 'pending',
+                      },
+                      isMobile,
+                    );
+                  }).toList(),
+                );
+              },
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatCard(
-      IconData icon, String value, String label, Color color) {
-    final isMobile = MediaQuery.of(context).size.width < 600;
+  // _buildStatCard removed; replaced by live count cards
 
-    return Container(
-      padding: EdgeInsets.all(isMobile ? 12 : 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 4,
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: isMobile ? 20 : 24, color: color),
-          const SizedBox(height: 4),
-          FittedBox(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: isMobile ? 18 : 24,
-                fontWeight: FontWeight.bold,
+  Widget _buildCountCard({
+    required IconData icon,
+    required Color color,
+    required String label,
+    required Query<Map<String, dynamic>> query,
+  }) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: query.snapshots(),
+      builder: (context, snapshot) {
+        final count = snapshot.data?.size ?? 0;
+        return Container(
+          padding: EdgeInsets.all(isMobile ? 12 : 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 4,
               ),
-            ),
+            ],
           ),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: isMobile ? 11 : 13,
-              color: Colors.grey[600],
-            ),
-            textAlign: TextAlign.center,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: isMobile ? 20 : 24, color: color),
+              const SizedBox(height: 4),
+              FittedBox(
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: isMobile ? 18 : 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: isMobile ? 11 : 13,
+                  color: AppTheme.mutedText,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -169,7 +228,7 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 4,
           ),
         ],
@@ -186,10 +245,11 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
                   children: [
                     CircleAvatar(
                       radius: 25,
-                      backgroundColor:
-                          AppTheme.brandPrimary.withValues(alpha: 0.1),
+                      backgroundColor: AppTheme.brandPrimary.withOpacity(0.1),
                       child: Text(
-                        tutor['id'],
+                        (tutor['name'] as String?)?.isNotEmpty == true
+                            ? (tutor['name'] as String)[0].toUpperCase()
+                            : 'T',
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           color: AppTheme.brandPrimary,
@@ -213,7 +273,7 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
                           Text(
                             tutor['email'],
                             style: TextStyle(
-                              color: Colors.grey[600],
+                              color: AppTheme.mutedText,
                               fontSize: 12,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -228,7 +288,7 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.1),
+                    color: Colors.orange.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Text(
@@ -247,9 +307,11 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
               children: [
                 CircleAvatar(
                   radius: 30,
-                  backgroundColor: AppTheme.brandPrimary.withValues(alpha: 0.1),
+                  backgroundColor: AppTheme.brandPrimary.withOpacity(0.1),
                   child: Text(
-                    tutor['id'],
+                    (tutor['name'] as String?)?.isNotEmpty == true
+                        ? (tutor['name'] as String)[0].toUpperCase()
+                        : 'T',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       color: AppTheme.brandPrimary,
@@ -269,9 +331,9 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
                         ),
                       ),
                       Text(tutor['email'],
-                          style: TextStyle(color: Colors.grey[600])),
+                          style: TextStyle(color: AppTheme.mutedText)),
                       Text(tutor['phone'],
-                          style: TextStyle(color: Colors.grey[600])),
+                          style: TextStyle(color: AppTheme.mutedText)),
                     ],
                   ),
                 ),
@@ -279,7 +341,7 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.1),
+                    color: Colors.orange.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
@@ -319,7 +381,8 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
                   children: [
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () => _approveTutor(tutor),
+                        onPressed:
+                            _isActionBusy ? null : () => _approveTutor(tutor),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
@@ -330,7 +393,8 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => _rejectTutor(tutor),
+                        onPressed:
+                            _isActionBusy ? null : () => _rejectTutor(tutor),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.red,
                           side: const BorderSide(color: Colors.red),
@@ -353,7 +417,8 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _approveTutor(tutor),
+                    onPressed:
+                        _isActionBusy ? null : () => _approveTutor(tutor),
                     icon: const Icon(Icons.check),
                     label: const Text('Approve'),
                     style: ElevatedButton.styleFrom(
@@ -366,7 +431,7 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _rejectTutor(tutor),
+                    onPressed: _isActionBusy ? null : () => _rejectTutor(tutor),
                     icon: const Icon(Icons.close),
                     label: const Text('Reject'),
                     style: OutlinedButton.styleFrom(
@@ -413,13 +478,30 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
     );
   }
 
-  void _approveTutor(Map<String, dynamic> tutor) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${tutor['name']} has been approved'),
-        backgroundColor: Colors.green,
-      ),
-    );
+  Future<void> _approveTutor(Map<String, dynamic> tutor) async {
+    final uid = tutor['uid'] as String?;
+    if (uid == null) return;
+    setState(() => _isActionBusy = true);
+    try {
+      await _tutorProfiles.doc(uid).update({'status': 'approved'});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${tutor['name']} has been approved'),
+          backgroundColor: AppTheme.brandSecondary,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to approve: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isActionBusy = false);
+    }
   }
 
   void _rejectTutor(Map<String, dynamic> tutor) {
@@ -449,15 +531,36 @@ class _AdminTutorApprovalsPageState extends State<AdminTutorApprovalsPage> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Tutor rejected'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            },
+            onPressed: _isActionBusy
+                ? null
+                : () async {
+                    Navigator.pop(context);
+                    final uid = tutor['uid'] as String?;
+                    if (uid == null) return;
+                    setState(() => _isActionBusy = true);
+                    try {
+                      await _tutorProfiles
+                          .doc(uid)
+                          .update({'status': 'rejected'});
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('Tutor rejected'),
+                          backgroundColor: Theme.of(context).colorScheme.error,
+                        ),
+                      );
+                    } catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Failed to reject: $e'),
+                          backgroundColor: Theme.of(context).colorScheme.error,
+                        ),
+                      );
+                    } finally {
+                      if (mounted) setState(() => _isActionBusy = false);
+                    }
+                  },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Reject'),
           ),
