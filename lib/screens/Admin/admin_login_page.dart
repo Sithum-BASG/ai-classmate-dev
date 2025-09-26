@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:go_router/go_router.dart';
 import '../../theme.dart';
 
@@ -15,6 +17,13 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _rememberMe = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingAdminSession();
+  }
 
   @override
   void dispose() {
@@ -210,8 +219,12 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                                     height: 20,
                                     width: 20,
                                     child: Checkbox(
-                                      value: false,
-                                      onChanged: (value) {},
+                                      value: _rememberMe,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _rememberMe = value ?? false;
+                                        });
+                                      },
                                       materialTapTargetSize:
                                           MaterialTapTargetSize.shrinkWrap,
                                     ),
@@ -310,21 +323,99 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
     );
   }
 
-  void _handleLogin() {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
-      // Simulate login delay
-      Future.delayed(const Duration(seconds: 2), () {
-        setState(() {
-          _isLoading = false;
-        });
+    setState(() {
+      _isLoading = true;
+    });
 
-        // Navigate to admin dashboard
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    try {
+      if (kIsWeb) {
+        await FirebaseAuth.instance.setPersistence(
+            _rememberMe ? Persistence.LOCAL : Persistence.SESSION);
+      }
+      final credential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password);
+
+      final user = credential.user;
+      if (user == null) {
+        throw FirebaseAuthException(
+            code: 'user-null', message: 'No user found');
+      }
+
+      // Force refresh token to ensure latest custom claims are available
+      final idTokenResult = await user.getIdTokenResult(true);
+      final claims = idTokenResult.claims ?? {};
+      final role = claims['role'];
+
+      if (role == 'admin') {
+        if (!mounted) return;
         context.go('/admin/dashboard');
+      } else {
+        await FirebaseAuth.instance.signOut();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Access denied: Admins only'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      String message = 'Sign in failed';
+      switch (e.code) {
+        case 'invalid-email':
+          message = 'Invalid email address';
+          break;
+        case 'user-disabled':
+          message = 'This user has been disabled';
+          break;
+        case 'user-not-found':
+        case 'wrong-password':
+          message = 'Invalid email or password';
+          break;
+        default:
+          message = e.message ?? message;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Unexpected error. Please try again.'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
       });
     }
+  }
+
+  Future<void> _checkExistingAdminSession() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final token = await user.getIdTokenResult(true);
+      final claims = token.claims ?? {};
+      if (claims['role'] == 'admin') {
+        if (!mounted) return;
+        context.go('/admin/dashboard');
+      }
+    } catch (_) {}
   }
 }

@@ -8,6 +8,7 @@ import 'admin_announcements_page.dart';
 import 'admin_analytics_page.dart';
 import 'admin_user_management_page.dart';
 import 'admin_settings_page.dart';
+import 'admin_profile_page.dart';
 
 class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
@@ -46,7 +47,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   onPressed: () {},
                 ),
                 IconButton(
-                  icon: const Icon(Icons.exit_to_app),
+                  icon: const Icon(Icons.home_outlined),
                   onPressed: () => context.go('/'),
                 ),
               ],
@@ -110,7 +111,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                             const SizedBox(width: 12),
                             TextButton(
                               onPressed: () => context.go('/'),
-                              child: const Text('Exit Admin'),
+                              child: const Text('Home'),
                             ),
                           ],
                         ),
@@ -186,6 +187,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               _buildNavItem(Icons.analytics, 'Analytics & Reports', 5),
               _buildNavItem(Icons.people, 'User Management', 6),
               _buildNavItem(Icons.settings, 'Settings', 7),
+              _buildNavItem(Icons.person_outline, 'Profile', 8),
             ],
           ),
         ),
@@ -248,6 +250,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         return 'User Management';
       case 7:
         return 'Settings';
+      case 8:
+        return 'Admin Profile';
       default:
         return 'Dashboard';
     }
@@ -271,6 +275,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         return const AdminUserManagementPage();
       case 7:
         return const AdminSettingsPage();
+      case 8:
+        return const AdminProfilePage();
       default:
         return _buildDashboard();
     }
