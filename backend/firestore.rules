@@ -9,6 +9,9 @@ service cloud.firestore {
     function isTutor() { return role() == 'tutor'; }
     function isStudent() { return role() == 'student'; }
     function tutorApproved() { return request.auth.token.tutorApproved == true; }
+    function tutorProfileApproved(u) {
+      return get(/databases/$(db)/documents/tutor_profiles/$(u)).data.status == 'approved';
+    }
     function isSelf(targetUserId) { return signedIn() && uid() == targetUserId; }
 
     function getClass(classId) {
@@ -69,10 +72,13 @@ service cloud.firestore {
     match /classes/{classId} {
       allow read: if isAdmin()
                   || resource.data.status == 'published'
-                  || (isTutor() && resource.data.tutorId == uid());
-      allow create: if isTutor() && tutorApproved(); // tutor drafts via app are allowed
-      allow update: if (isTutor() && tutorApproved() && resource.data.tutorId == uid()
-                        && request.resource.data.status == resource.data.status) // tutors can't change status directly
+                  || (signedIn() && resource.data.tutorId == uid());
+      // Allow approved tutors (by profile) to create their own class drafts
+      allow create: if signedIn() && tutorProfileApproved(uid());
+      // Tutors can update their own classes while approved, but not change status
+      allow update: if (signedIn() && resource.data.tutorId == uid()
+                        && tutorProfileApproved(uid())
+                        && request.resource.data.status == resource.data.status)
                         || isAdmin();
       allow delete: if isAdmin();
 
