@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import '../../config/backend.dart';
 import '../../theme.dart';
 // Details and creation pages are navigated via routes
 
@@ -325,13 +327,27 @@ class _TutorClassesPageState extends State<TutorClassesPage> {
 
   Future<void> _publishClass(String classId) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('classes')
-          .doc(classId)
-          .update({'status': 'published'});
+      // Ensure latest token
+      await FirebaseAuth.instance.currentUser?.getIdToken(true);
+
+      final callable = FirebaseFunctions.instanceFor(
+        region: BackendConfig.firebaseRegion,
+      ).httpsCallable(BackendConfig.fnPublishClass);
+
+      await callable.call({'classId': classId});
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Class published')),
+      );
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      final msg =
+          'Failed to publish: [${e.code}] ${e.message ?? e.details ?? e.toString()}';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
       );
     } catch (e) {
       if (!mounted) return;

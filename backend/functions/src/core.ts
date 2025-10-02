@@ -22,14 +22,27 @@ export const publishClass = functions
     const snap = await db.collection('classes').doc(classId).get();
     if (!snap.exists) throw new functions.https.HttpsError('not-found', 'Class not found');
     const clazz = snap.data() as any;
-    if (role !== 'admin' && !(role === 'tutor' && clazz.tutorId === uid)) {
-      throw new functions.https.HttpsError('permission-denied', 'Not allowed');
+    // Allow admins, or class owner with approved tutor profile
+    const isAdmin = role === 'admin';
+    if (!isAdmin) {
+      if (clazz.tutorId !== uid) {
+        throw new functions.https.HttpsError('permission-denied', 'Not allowed');
+      }
+      const prof = await db.collection('tutor_profiles').doc(uid).get();
+      const approved = prof.exists && (prof.data() as any)?.status === 'approved';
+      if (!approved) {
+        throw new functions.https.HttpsError('permission-denied', 'Tutor not approved');
+      }
     }
     if (clazz.status === 'published') return { ok: true, status: 'published' };
 
     // Clash check: verify no overlapping sessions for the tutor across all published classes
-    const sessionsRef = db.collectionGroup('sessions').where('classId', '==', classId);
-    const sessions = await sessionsRef.get();
+    // Read only this class' sessions directly (more robust than collectionGroup for this case)
+    const sessions = await db
+      .collection('classes')
+      .doc(classId)
+      .collection('sessions')
+      .get();
     const tutorClasses = await db
       .collection('classes')
       .where('tutorId', '==', clazz.tutorId)
@@ -43,8 +56,19 @@ export const publishClass = functions
 
     for (const s of sessions.docs) {
       const a = s.data() as any;
+      const aStartRaw = a.start_time || a.startTime;
+      const aEndRaw = a.end_time || a.endTime;
+      if (!aStartRaw || !aEndRaw) continue;
+      const aStart: Date = aStartRaw.toDate ? aStartRaw.toDate() : new Date(aStartRaw);
+      const aEnd: Date = aEndRaw.toDate ? aEndRaw.toDate() : new Date(aEndRaw);
       for (const b of otherSessions) {
-        if (a.session_date === b.session_date && timesOverlap(a.start_time || a.startTime, a.end_time || a.endTime, b.start_time || b.startTime, b.end_time || b.endTime)) {
+        const bStartRaw = (b as any).start_time || (b as any).startTime;
+        const bEndRaw = (b as any).end_time || (b as any).endTime;
+        if (!bStartRaw || !bEndRaw) continue;
+        const bStart: Date = bStartRaw.toDate ? bStartRaw.toDate() : new Date(bStartRaw);
+        const bEnd: Date = bEndRaw.toDate ? bEndRaw.toDate() : new Date(bEndRaw);
+        if (aStart.toDateString() !== bStart.toDateString()) continue;
+        if (timesOverlapDate(aStart, aEnd, bStart, bEnd)) {
           throw new functions.https.HttpsError('failed-precondition', 'Session time clash detected');
         }
       }
