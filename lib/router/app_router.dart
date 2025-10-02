@@ -31,6 +31,8 @@ import '../screens/tutor/create_class_page.dart';
 import '../screens/tutor/tutor_class_details_page.dart';
 import '../screens/tutor/tutor_student_details_page.dart';
 import '../screens/tutor/tutor_subscription_page.dart';
+import '../screens/tutor/create_session_page.dart';
+import '../screens/tutor/tutor_session_details_page.dart';
 
 final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -182,6 +184,29 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) {
         final classId = state.pathParameters['id'] ?? '';
         return CreateClassPage(classId: classId);
+      },
+    ),
+    GoRoute(
+      path: '/tutor/class/:id/sessions/new',
+      builder: (context, state) {
+        final classId = state.pathParameters['id'] ?? '';
+        return CreateSessionPage(classId: classId);
+      },
+    ),
+    GoRoute(
+      path: '/tutor/class/:id/sessions/:sessionId',
+      builder: (context, state) {
+        final classId = state.pathParameters['id'] ?? '';
+        final sessionId = state.pathParameters['sessionId'] ?? '';
+        return TutorSessionDetailsPage(classId: classId, sessionId: sessionId);
+      },
+    ),
+    GoRoute(
+      path: '/tutor/class/:id/sessions/:sessionId/edit',
+      builder: (context, state) {
+        final classId = state.pathParameters['id'] ?? '';
+        final sessionId = state.pathParameters['sessionId'] ?? '';
+        return CreateSessionPage(classId: classId, sessionId: sessionId);
       },
     ),
 

@@ -1,7 +1,7 @@
 import * as functions from 'firebase-functions';
 import { REGION } from './config';
 import { getAuth, getFirestore } from './init';
-import { isoNow, timesOverlap, addDays } from './utils';
+import { isoNow, timesOverlap, timesOverlapDate, addDays } from './utils';
 
 // publishClass: tutor/admin publishes a draft class after clash checks
 // data: { classId: string }
@@ -146,6 +146,92 @@ export const submitPaymentProof = functions
 
     await invoiceSnap.ref.set({ status: 'under_review' }, { merge: true });
     return { ok: true };
+  });
+
+
+// createOrUpdateSession: validates overlap and writes a session doc
+// data: { classId: string, sessionId?: string, startTime: string, endTime: string, label?: string, venue?: string }
+export const createOrUpdateSession = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+    const uid = context.auth.uid;
+    const role = (context.auth.token as any).role;
+
+    const classId = data?.classId as string;
+    const sessionId = (data?.sessionId as string) || undefined;
+    const startTimeIso = data?.startTime as string | undefined;
+    const endTimeIso = data?.endTime as string | undefined;
+    const startMs = (data?.startMs as number | undefined);
+    const endMs = (data?.endMs as number | undefined);
+    const label = (data?.label as string) || undefined;
+    const venue = (data?.venue as string) || undefined;
+
+    if (!classId || (!startTimeIso && !startMs) || (!endTimeIso && !endMs)) {
+      throw new functions.https.HttpsError('invalid-argument', 'classId and start/end time required');
+    }
+    const start = startMs !== undefined ? new Date(startMs) : new Date(startTimeIso as string);
+    const end = endMs !== undefined ? new Date(endMs) : new Date(endTimeIso as string);
+    if (!(start instanceof Date) || isNaN(start.getTime()) || !(end instanceof Date) || isNaN(end.getTime())) {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid start/end time');
+    }
+    if (end <= start) {
+      throw new functions.https.HttpsError('invalid-argument', 'End must be after start');
+    }
+
+    const db = getFirestore();
+    const classSnap = await db.collection('classes').doc(classId).get();
+    if (!classSnap.exists) throw new functions.https.HttpsError('not-found', 'Class not found');
+    const clazz = classSnap.data() as any;
+    const isAdmin = role === 'admin';
+    if (!isAdmin) {
+      if (clazz.tutorId !== uid) {
+        throw new functions.https.HttpsError('permission-denied', 'Not allowed');
+      }
+      const prof = await db.collection('tutor_profiles').doc(uid).get();
+      const approved = prof.exists && (prof.data() as any)?.status === 'approved';
+      if (!approved) {
+        throw new functions.https.HttpsError('permission-denied', 'Tutor not approved');
+      }
+    }
+
+    // Overlap check across tutor's all sessions (including drafts and this class)
+    const tutorClasses = await db.collection('classes').where('tutorId', '==', clazz.tutorId).get();
+    const sessionSnaps = await Promise.all(
+      tutorClasses.docs.map((d) => db.collection('classes').doc(d.id).collection('sessions').get())
+    );
+    const allSessions = sessionSnaps.flatMap((q, idx) => q.docs.map((d) => ({ id: d.id, ...d.data() } as any)));
+
+    for (const s of allSessions) {
+      if (sessionId && s.id === sessionId) continue; // ignore self when editing
+      const sStart = s.start_time || s.startTime;
+      const sEnd = s.end_time || s.endTime;
+      if (!sStart || !sEnd) continue;
+      const aStart = sStart.toDate ? sStart.toDate() : new Date(sStart);
+      const aEnd = sEnd.toDate ? sEnd.toDate() : new Date(sEnd);
+      if (aStart.toDateString() !== start.toDateString()) continue; // different date
+      if (timesOverlapDate(start, end, aStart, aEnd)) {
+        throw new functions.https.HttpsError('failed-precondition', 'Session time clash detected');
+      }
+    }
+
+    const payload: any = {
+      start_time: start,
+      end_time: end,
+      classId,
+    };
+    if (label) payload.label = label;
+    if (venue) payload.venue = venue;
+
+    if (sessionId) {
+      await db.collection('classes').doc(classId).collection('sessions').doc(sessionId).set(payload, { merge: true });
+      return { ok: true, sessionId };
+    }
+    const ref = await db.collection('classes').doc(classId).collection('sessions').add({
+      ...payload,
+      created_at: new Date(),
+    });
+    return { ok: true, sessionId: ref.id };
   });
 
 

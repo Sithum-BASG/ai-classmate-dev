@@ -85,10 +85,10 @@ service cloud.firestore {
       // Class sessions as subcollection: classes/{classId}/sessions/{sessionId}
       match /sessions/{sessionId} {
         allow read: if isAdmin()
-                    || (isTutor() && getClass(classId).data.tutorId == uid())
-                    || classIsPublished(classId);
+                    || classIsPublished(classId)
+                    || (signedIn() && getClass(classId).data.tutorId == uid());
         allow create, update, delete: if isAdmin()
-                                      || (isTutor() && tutorApproved() && getClass(classId).data.tutorId == uid());
+                                      || (signedIn() && tutorProfileApproved(uid()) && getClass(classId).data.tutorId == uid());
       }
 
       // Class announcements subcollection

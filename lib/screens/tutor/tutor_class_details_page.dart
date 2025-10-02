@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../theme.dart';
 
 class TutorClassDetailsPage extends StatefulWidget {
@@ -15,44 +16,19 @@ class TutorClassDetailsPage extends StatefulWidget {
 }
 
 class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
-  final Map<String, dynamic> _classDetails = {
-    'id': '8',
-    'title': 'Physics A/L',
-    'type': 'Group',
-    'mode': 'In-person',
-    'description':
-        'Comprehensive A/L Physics covering mechanics, waves, electricity and modern physics',
-    'students': 12,
-    'maxStudents': 15,
-    'price': 2500,
-    'duration': '2 hours',
-    'schedule': {
-      'Mon': '4:00 PM',
-      'Wed': '6:00 PM',
-      'Fri': '4:00 PM',
-    },
-    'totalIncome': 30000,
-    'enrolledStudents': [
-      {
-        'id': '1',
-        'name': 'John Silva',
-        'grade': 'Grade 13',
-        'paymentStatus': 'paid',
-      },
-      {
-        'id': '2',
-        'name': 'Sarah Fernando',
-        'grade': 'Grade 12',
-        'paymentStatus': 'paid',
-      },
-      {
-        'id': '3',
-        'name': 'Mike Perera',
-        'grade': 'Grade 13',
-        'paymentStatus': 'pending',
-      },
-    ],
-  };
+  Stream<DocumentSnapshot<Map<String, dynamic>>> get _classStream =>
+      FirebaseFirestore.instance
+          .collection('classes')
+          .doc(widget.classId)
+          .snapshots();
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> get _sessionsStream =>
+      FirebaseFirestore.instance
+          .collection('classes')
+          .doc(widget.classId)
+          .collection('sessions')
+          .orderBy('start_time')
+          .snapshots();
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +41,13 @@ class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/tutor/classes'),
         ),
-        title: Text('Class ${widget.classId}'),
+        title: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: _classStream,
+          builder: (context, snapshot) {
+            final name = snapshot.data?.data()?['name'] as String?;
+            return Text(name == null || name.isEmpty ? 'Class Details' : name);
+          },
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.edit),
@@ -92,139 +74,193 @@ class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
                   ),
                 ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                stream: _classStream,
+                builder: (context, snapshot) {
+                  final data = snapshot.data?.data() ?? <String, dynamic>{};
+                  final title = (data['name'] as String?) ?? 'Untitled Class';
+                  final type = (data['type'] as String?) ?? 'Group';
+                  final mode = (data['mode'] as String?) ?? 'In-person';
+                  final description = (data['description'] as String?) ?? '';
+                  final students =
+                      (data['enrolled_count'] as num?)?.toInt() ?? 0;
+                  final maxStudents =
+                      (data['max_students'] as num?)?.toInt() ?? 0;
+                  final price = (data['price'] as num?)?.toInt() ?? 0;
+                  final totalIncome =
+                      (data['total_income'] as num?)?.toInt() ?? 0;
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Class ${_classDetails['id']} - ${_classDetails['title']}',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      PopupMenuButton<String>(
-                        onSelected: (value) {
-                          if (value == 'edit') {
-                            context.go('/tutor/class/${widget.classId}/edit');
-                          } else if (value == 'delete') {
-                            _showDeleteConfirmation();
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          const PopupMenuItem(
-                            value: 'edit',
-                            child: Row(
-                              children: [
-                                Icon(Icons.edit, size: 18),
-                                SizedBox(width: 8),
-                                Text('Edit'),
-                              ],
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Row(
-                              children: [
-                                Icon(Icons.delete, size: 18, color: Colors.red),
-                                SizedBox(width: 8),
-                                Text('Delete',
-                                    style: TextStyle(color: Colors.red)),
-                              ],
-                            ),
+                          PopupMenuButton<String>(
+                            onSelected: (value) {
+                              if (value == 'edit') {
+                                context
+                                    .go('/tutor/class/${widget.classId}/edit');
+                              } else if (value == 'delete') {
+                                _showDeleteConfirmation();
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Edit'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete,
+                                        size: 18, color: Colors.red),
+                                    SizedBox(width: 8),
+                                    Text('Delete',
+                                        style: TextStyle(color: Colors.red)),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _getTypeColor(_classDetails['type'])
-                              .withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          _classDetails['type'],
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: _getTypeColor(_classDetails['type']),
-                            fontWeight: FontWeight.w600,
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _getTypeColor(type).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              type,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _getTypeColor(type),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(mode,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                )),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        description,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          _classDetails['mode'],
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildInfoColumn(
+                              'Students', '$students/$maxStudents'),
+                          _buildInfoColumn('Price', 'Rs. $price'),
+                          _buildInfoColumn('Total Income', 'Rs. $totalIncome',
+                              isHighlighted: true),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Schedule:',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
+                          TextButton.icon(
+                            onPressed: () => context.push(
+                                '/tutor/class/${widget.classId}/sessions/new'),
+                            icon: const Icon(Icons.add),
+                            label: const Text('Create Session'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: _sessionsStream,
+                        builder: (context, snap) {
+                          final sess = snap.data?.docs ?? [];
+                          if (sess.isEmpty) {
+                            return const Text('No sessions yet');
+                          }
+                          return Wrap(
+                            spacing: 12,
+                            runSpacing: 8,
+                            children: sess.map((d) {
+                              final sdata = d.data();
+                              DateTime? start;
+                              final ts = sdata['start_time'];
+                              if (ts is Timestamp) start = ts.toDate();
+                              final rawLabel =
+                                  (sdata['label'] as String?)?.trim();
+                              final chipLabel =
+                                  (rawLabel != null && rawLabel.isNotEmpty)
+                                      ? rawLabel
+                                      : 'Session';
+                              final dateText = start != null
+                                  ? _formatSessionDateOnly(start)
+                                  : '';
+                              return InputChip(
+                                label: Text(
+                                  dateText.isNotEmpty
+                                      ? '$chipLabel · $dateText'
+                                      : chipLabel,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                backgroundColor: AppTheme.brandSurface,
+                                onPressed: () => context.push(
+                                    '/tutor/class/${widget.classId}/sessions/${d.id}'),
+                                onDeleted: () => _confirmDeleteSession(
+                                    d.id, rawLabel ?? chipLabel),
+                              );
+                            }).toList(),
+                          );
+                        },
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _classDetails['description'],
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildInfoColumn('Students',
-                          '${_classDetails['students']}/${_classDetails['maxStudents']}'),
-                      _buildInfoColumn(
-                          'Price', 'Rs. ${_classDetails['price']}'),
-                      _buildInfoColumn(
-                          'Total Income', 'Rs. ${_classDetails['totalIncome']}',
-                          isHighlighted: true),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Schedule:',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 12,
-                    children:
-                        _classDetails['schedule'].entries.map<Widget>((entry) {
-                      return Chip(
-                        label: Text(
-                          '${entry.key} ${entry.value}',
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        backgroundColor: AppTheme.brandSurface,
-                      );
-                    }).toList(),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
 
@@ -265,7 +301,8 @@ class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  ...(_classDetails['enrolledStudents'] as List).map((student) {
+                  // TODO: Replace with real enrollments stream when available
+                  ...const <Map<String, dynamic>>[].map((student) {
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       padding: const EdgeInsets.all(12),
@@ -278,13 +315,9 @@ class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
                           CircleAvatar(
                             radius: 20,
                             backgroundColor:
-                                AppTheme.brandPrimary.withValues(alpha: 0.1),
+                                AppTheme.brandPrimary.withOpacity(0.1),
                             child: Text(
-                              student['name']
-                                  .split(' ')
-                                  .map((e) => e[0])
-                                  .take(2)
-                                  .join(),
+                              'ST',
                               style: const TextStyle(
                                 color: AppTheme.brandPrimary,
                                 fontWeight: FontWeight.bold,
@@ -296,19 +329,12 @@ class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  student['name'],
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                Text(
-                                  student['grade'],
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
+                                const Text('Student Name',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.w600)),
+                                Text('Grade',
+                                    style: TextStyle(
+                                        fontSize: 12, color: Colors.grey[600])),
                               ],
                             ),
                           ),
@@ -318,27 +344,18 @@ class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: student['paymentStatus'] == 'paid'
-                                  ? Colors.blue.withValues(alpha: 0.1)
-                                  : Colors.red.withValues(alpha: 0.1),
+                              color: Colors.blue.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: Text(
-                              student['paymentStatus'],
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: student['paymentStatus'] == 'paid'
-                                    ? Colors.blue
-                                    : Colors.red,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                            child: const Text('status',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.blue,
+                                    fontWeight: FontWeight.w600)),
                           ),
                           PopupMenuButton<String>(
                             onSelected: (value) {
-                              if (value == 'remove') {
-                                _showRemoveStudentConfirmation(student);
-                              }
+                              // hook when enrollments wired
                             },
                             itemBuilder: (context) => [
                               const PopupMenuItem(
@@ -427,6 +444,57 @@ class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
     }
   }
 
+  // Removed unused _formatSessionTime
+
+  String _formatSessionDateOnly(DateTime dt) {
+    final dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    final day = dayNames[dt.weekday % 7];
+    final month = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    return '$day $d/$month';
+  }
+
+  Future<void> _confirmDeleteSession(String sessionId, String label) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Session'),
+        content: Text('Delete session "$label"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('classes')
+          .doc(widget.classId)
+          .collection('sessions')
+          .doc(sessionId)
+          .delete();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Session deleted')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete session: $e')),
+        );
+      }
+    }
+  }
+
   void _showDeleteConfirmation() {
     showDialog(
       context: context,
@@ -459,31 +527,7 @@ class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
     // TODO: Implement add student dialog
   }
 
-  void _showRemoveStudentConfirmation(Map<String, dynamic> student) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Remove Student'),
-        content: Text('Remove ${student['name']} from this class?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Student removed from class')),
-              );
-            },
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
-    );
-  }
+  // Removed unused _showRemoveStudentConfirmation
 
   void _messageClass() {
     // TODO: Navigate to message composition for class
