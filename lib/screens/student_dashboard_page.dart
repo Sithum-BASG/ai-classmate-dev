@@ -16,30 +16,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
   String _userName = "...";
   final TextEditingController _searchController = TextEditingController();
 
-  final List<Map<String, dynamic>> _enrolledClasses = [
-    {
-      'id': '1',
-      'title': 'Physics A/L',
-      'tutorName': 'Mr. Silva',
-      'schedule': 'Tomorrow 5 PM',
-      'progressCurrent': 12,
-      'progressTotal': 20,
-      'rating': 4.5,
-      'nextSession': 'Tomorrow',
-      'status': 'upcoming',
-    },
-    {
-      'id': '2',
-      'title': 'Chemistry A/L',
-      'tutorName': 'Dr. Perera',
-      'schedule': 'Wed 6 PM',
-      'progressCurrent': 8,
-      'progressTotal': 15,
-      'rating': 4.8,
-      'nextSession': 'Wednesday',
-      'status': 'active',
-    },
-  ];
+  // Removed mock enrolled classes; will stream real enrollments
 
   final List<Map<String, dynamic>> _aiRecommendations = [
     {
@@ -91,6 +68,150 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
   void initState() {
     super.initState();
     _loadUserName();
+  }
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> _myEnrollmentsStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
+    }
+    return FirebaseFirestore.instance
+        .collection('enrollments')
+        .where('studentId', isEqualTo: user.uid)
+        .where('status', whereIn: ['active', 'pending']).snapshots();
+  }
+
+  Widget _buildEnrollments() {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _myEnrollmentsStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final enrollDocs = snapshot.data?.docs ?? [];
+        if (enrollDocs.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Text('You have no enrolled classes yet.'),
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            children: enrollDocs.map((e) {
+              final ed = e.data();
+              final classId = ed['classId'] as String? ?? '';
+              return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                future: FirebaseFirestore.instance
+                    .collection('classes')
+                    .doc(classId)
+                    .get(),
+                builder: (context, clsSnap) {
+                  final cd = clsSnap.data?.data() ?? <String, dynamic>{};
+                  final name = (cd['name'] as String?) ?? 'Class';
+                  final mode = (cd['mode'] as String?) ?? 'In-person';
+                  final type = (cd['type'] as String?) ?? 'Group';
+                  final grade = (cd['grade'] as num?)?.toInt();
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => context.go('/class/$classId'),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        name,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '$type · $mode',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (grade != null)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            Colors.blue.withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        'Grade $grade',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.blue,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Icon(Icons.event,
+                                      size: 14, color: Colors.grey[600]),
+                                  const SizedBox(width: 4),
+                                  Text(mode,
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[600])),
+                                  const Spacer(),
+                                  const SizedBox(),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _loadUserName() async {
@@ -359,6 +480,8 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               ),
             ),
 
+            // Removed duplicated AI Recommendations section
+
             // Enrolled Classes
             SliverToBoxAdapter(
               child: Padding(
@@ -389,147 +512,9 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               ),
             ),
 
-            // Classes List
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final classData = _enrolledClasses[index];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () => context.go('/class/${classData['id']}'),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          classData['title'],
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          'with ${classData['tutorName']}',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: classData['status'] == 'upcoming'
-                                            ? Colors.orange
-                                                .withValues(alpha: 0.1)
-                                            : Colors.green
-                                                .withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        classData['nextSession'],
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color:
-                                              classData['status'] == 'upcoming'
-                                                  ? Colors.orange
-                                                  : Colors.green,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Icon(Icons.schedule,
-                                        size: 14, color: Colors.grey[600]),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      classData['schedule'],
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.star,
-                                            size: 14, color: Colors.amber),
-                                        const SizedBox(width: 2),
-                                        Text(
-                                          classData['rating'].toString(),
-                                          style: const TextStyle(fontSize: 12),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: LinearProgressIndicator(
-                                    value: classData['progressCurrent'] /
-                                        classData['progressTotal'],
-                                    backgroundColor: Colors.grey[200],
-                                    valueColor:
-                                        const AlwaysStoppedAnimation<Color>(
-                                      AppTheme.brandPrimary,
-                                    ),
-                                    minHeight: 6,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '${classData['progressCurrent']} of ${classData['progressTotal']} lessons completed',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                  childCount: _enrolledClasses.length,
-                ),
-              ),
+            // Enrollments List (live)
+            SliverToBoxAdapter(
+              child: _buildEnrollments(),
             ),
 
             const SliverToBoxAdapter(
