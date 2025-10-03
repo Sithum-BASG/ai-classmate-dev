@@ -334,3 +334,43 @@ export const getOrCreateCurrentMonthInvoice = functions
     return out.data();
   });
 
+// reviewPayment: admin approves or rejects a pending payment proof
+// data: { paymentId: string, approve: boolean, reason?: string }
+export const reviewPayment = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+    const role = (context.auth.token as any).role;
+    const reviewerId = context.auth.uid;
+    if (role !== 'admin') throw new functions.https.HttpsError('permission-denied', 'Admin role required');
+
+    const paymentId = data?.paymentId as string;
+    const approve = Boolean(data?.approve);
+    const reason = (data?.reason as string | undefined) || undefined;
+    if (!paymentId) throw new functions.https.HttpsError('invalid-argument', 'paymentId is required');
+
+    const db = getFirestore();
+    const payRef = db.collection('payments').doc(paymentId);
+    const paySnap = await payRef.get();
+    if (!paySnap.exists) throw new functions.https.HttpsError('not-found', 'Payment not found');
+    const payment = paySnap.data() as any;
+    const invoiceId = payment.invoiceId as string | undefined;
+    if (!invoiceId) throw new functions.https.HttpsError('failed-precondition', 'Payment missing invoiceId');
+
+    const invRef = db.collection('invoices').doc(invoiceId);
+    const invSnap = await invRef.get();
+    if (!invSnap.exists) throw new functions.https.HttpsError('not-found', 'Invoice not found');
+
+    const updates: any = {
+      verifyStatus: approve ? 'approved' : 'rejected',
+      reviewedBy: reviewerId,
+      reviewedAt: isoNow()
+    };
+    if (!approve && reason) updates.rejectionReason = reason;
+
+    await payRef.set(updates, { merge: true });
+    await invRef.set({ status: approve ? 'approved' : 'rejected', reviewedBy: reviewerId, reviewedAt: isoNow() }, { merge: true });
+
+    return { ok: true, status: updates.verifyStatus };
+  });
+

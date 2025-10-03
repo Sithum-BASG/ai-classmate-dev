@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import '../../theme.dart';
 
@@ -11,34 +13,20 @@ class AdminPaymentVerificationPage extends StatefulWidget {
 
 class _AdminPaymentVerificationPageState
     extends State<AdminPaymentVerificationPage> {
-  final List<Map<String, dynamic>> _pendingPayments = [
-    {
-      'studentId': 'STU001',
-      'studentName': 'Sahan Fernando',
-      'paymentId': 'PAY_001',
-      'class': 'Physics A/L - Group Class',
-      'tutor': 'Dr. Sarah Johnson',
-      'amount': 2500,
-      'bankSlipReference': 'BSL001234567',
-      'paymentDate': '2024-12-14',
-      'submitted': '2024-12-15',
-      'proofImage': 'payment_proof_001.jpg',
-      'status': 'pending',
-    },
-    {
-      'studentId': 'STU002',
-      'studentName': 'Nimasha Silva',
-      'paymentId': 'PAY_002',
-      'class': 'Mathematics A/L - Individual',
-      'tutor': 'Mr. Kamal Perera',
-      'amount': 3500,
-      'bankSlipReference': 'BSL001234568',
-      'paymentDate': '2024-12-14',
-      'submitted': '2024-12-15',
-      'proofImage': 'payment_proof_002.jpg',
-      'status': 'pending',
-    },
-  ];
+  Stream<QuerySnapshot<Map<String, dynamic>>> _pendingPaymentsStream() {
+    return FirebaseFirestore.instance
+        .collection('payments')
+        .where('verifyStatus', isEqualTo: 'pending')
+        .orderBy('paidAt', descending: true)
+        .snapshots();
+  }
+
+  String _initialsOf(dynamic name) {
+    final s = (name as String?)?.trim() ?? '';
+    if (s.isEmpty) return 'S';
+    final parts = s.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    return parts.take(2).map((e) => e[0]).join().toUpperCase();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +73,35 @@ class _AdminPaymentVerificationPageState
             SizedBox(height: isMobile ? 16 : 24),
 
             // Pending Payments
-            ..._pendingPayments.map((payment) => _buildPaymentCard(payment)),
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _pendingPaymentsStream(),
+              builder: (context, snap) {
+                if (snap.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Text('Failed to load payments: ${snap.error}',
+                        style: const TextStyle(color: Colors.red)),
+                  );
+                }
+                if (!snap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final items = snap.data!.docs.map((d) => d.data()).toList();
+                if (items.isEmpty) {
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text('No pending payments'),
+                  );
+                }
+                return Column(
+                  children: items.map((p) => _buildPaymentCard(p)).toList(),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -176,11 +192,7 @@ class _AdminPaymentVerificationPageState
                       backgroundColor:
                           AppTheme.brandPrimary.withValues(alpha: 0.1),
                       child: Text(
-                        payment['studentName']
-                            .split(' ')
-                            .map((e) => e[0])
-                            .take(2)
-                            .join(),
+                        _initialsOf(payment['studentName']),
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           color: AppTheme.brandPrimary,
@@ -194,7 +206,7 @@ class _AdminPaymentVerificationPageState
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            payment['studentName'],
+                            (payment['studentName'] as String?) ?? 'Student',
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
@@ -238,11 +250,7 @@ class _AdminPaymentVerificationPageState
                   radius: 25,
                   backgroundColor: AppTheme.brandPrimary.withValues(alpha: 0.1),
                   child: Text(
-                    payment['studentName']
-                        .split(' ')
-                        .map((e) => e[0])
-                        .take(2)
-                        .join(),
+                    _initialsOf(payment['studentName']),
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       color: AppTheme.brandPrimary,
@@ -255,21 +263,21 @@ class _AdminPaymentVerificationPageState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        payment['studentName'],
+                        (payment['studentName'] as String?) ?? 'Student',
                         style: TextStyle(
                           fontSize: isTablet ? 14 : 16,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       Text(
-                        'Student ID: ${payment['studentId']}',
+                        'Student ID: ${payment['studentId'] ?? ''}',
                         style: TextStyle(
                           color: Colors.grey[600],
                           fontSize: isTablet ? 12 : 13,
                         ),
                       ),
                       Text(
-                        'Payment ID: ${payment['paymentId']}',
+                        'Payment ID: ${payment['paymentId'] ?? ''}',
                         style: TextStyle(
                           color: Colors.grey[600],
                           fontSize: isTablet ? 12 : 13,
@@ -308,15 +316,22 @@ class _AdminPaymentVerificationPageState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildDetailRow('Class:', payment['class'], isMobile),
+                _buildDetailRow(
+                    'Invoice:', payment['invoiceId'] ?? '', isMobile),
                 const SizedBox(height: 4),
                 _buildDetailRow(
-                    'Amount:', 'LKR ${payment['amount']}', isMobile),
+                    'Amount:',
+                    'LKR ${payment['paidAmount'] ?? payment['amountDue'] ?? 0}',
+                    isMobile),
                 const SizedBox(height: 4),
                 _buildDetailRow(
-                    'Reference:', payment['bankSlipReference'], isMobile),
+                    'Reference:', payment['reference'] ?? '-', isMobile),
                 const SizedBox(height: 4),
-                _buildDetailRow('Date:', payment['paymentDate'], isMobile),
+                _buildDetailRow(
+                    'Date:',
+                    (payment['paidAt'] ?? payment['createdAt'] ?? '')
+                        .toString(),
+                    isMobile),
               ],
             ),
           ),
@@ -339,7 +354,7 @@ class _AdminPaymentVerificationPageState
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    payment['proofImage'],
+                    (payment['proofUrl'] ?? '-') as String,
                     style: TextStyle(fontSize: isMobile ? 12 : 14),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -486,17 +501,30 @@ class _AdminPaymentVerificationPageState
     );
   }
 
-  void _verifyPayment(Map<String, dynamic> payment) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Payment verified successfully'),
-        backgroundColor: Colors.green,
-      ),
-    );
+  Future<void> _verifyPayment(Map<String, dynamic> payment) async {
+    final id = (payment['paymentId'] ?? '') as String;
+    if (id.isEmpty) return;
+    try {
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('reviewPayment');
+      await callable.call({'paymentId': id, 'approve': true});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Payment verified'), backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Failed to verify: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   void _rejectPayment(Map<String, dynamic> payment) {
     final isMobile = MediaQuery.of(context).size.width < 600;
+    final reasonCtrl = TextEditingController();
 
     showDialog(
       context: context,
@@ -508,6 +536,7 @@ class _AdminPaymentVerificationPageState
         content: SizedBox(
           width: isMobile ? double.maxFinite : 400,
           child: TextField(
+            controller: reasonCtrl,
             maxLines: 3,
             style: TextStyle(fontSize: isMobile ? 13 : 14),
             decoration: InputDecoration(
@@ -528,14 +557,32 @@ class _AdminPaymentVerificationPageState
             ),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Payment rejected'),
-                  backgroundColor: Colors.red,
-                ),
-              );
+              try {
+                final id = (payment['paymentId'] ?? '') as String;
+                final callable =
+                    FirebaseFunctions.instanceFor(region: 'asia-south1')
+                        .httpsCallable('reviewPayment');
+                await callable.call({
+                  'paymentId': id,
+                  'approve': false,
+                  'reason': reasonCtrl.text.trim()
+                });
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Payment rejected'),
+                      backgroundColor: Colors.red),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text('Failed to reject: $e'),
+                      backgroundColor: Colors.red),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: Text(
@@ -644,15 +691,12 @@ class _AdminPaymentVerificationPageState
                     color: Colors.grey[200],
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.image, size: 80, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text('Payment proof image would display here'),
-                      ],
-                    ),
+                  child: Center(
+                    child: (payment['proofUrl'] != null &&
+                            (payment['proofUrl'] as String).isNotEmpty)
+                        ? Image.network(payment['proofUrl'],
+                            fit: BoxFit.contain)
+                        : const Text('No image'),
                   ),
                 ),
               ),

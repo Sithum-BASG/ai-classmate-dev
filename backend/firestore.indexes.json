@@ -78,6 +78,14 @@
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
+    {
+      "collectionGroup": "payments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "verifyStatus", "order": "ASCENDING" },
+        { "fieldPath": "paidAt", "order": "DESCENDING" }
+      ]
+    },
 
     {
       "collectionGroup": "users",

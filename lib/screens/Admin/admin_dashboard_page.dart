@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../theme.dart';
+import 'package:cloud_functions/cloud_functions.dart' as cloud_functions;
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'admin_tutor_approvals_page.dart';
 import 'admin_class_management_page.dart';
 import 'admin_payment_verification_page.dart';
@@ -42,6 +44,12 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 ),
               ),
               actions: [
+                TextButton.icon(
+                  onPressed: _seedDemoData,
+                  icon: const Icon(Icons.dataset, color: AppTheme.brandText),
+                  label: const Text('Seed',
+                      style: TextStyle(color: AppTheme.brandText)),
+                ),
                 IconButton(
                   icon: const Icon(Icons.notifications_outlined),
                   onPressed: () {},
@@ -81,6 +89,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                                   ?.copyWith(fontWeight: FontWeight.bold),
                             ),
                             const Spacer(),
+                            TextButton.icon(
+                              onPressed: _seedDemoData,
+                              icon: const Icon(Icons.dataset, size: 18),
+                              label: const Text('Seed Demo Data'),
+                            ),
                             Stack(
                               children: [
                                 IconButton(
@@ -125,6 +138,74 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             )
           : _buildPageContent(),
     );
+  }
+
+  Future<void> _seedDemoData() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Seed Demo Data'),
+        content: const Text(
+            'This will create demo tutors, students, and classes. Proceed?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Seed')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await firebase_auth.FirebaseAuth.instance.currentUser?.getIdToken(true);
+      final callable =
+          cloud_functions.FirebaseFunctions.instanceFor(region: 'asia-south1')
+              .httpsCallable('seedTestData');
+      final res = await callable.call();
+      final data = (res.data as Map?)?.cast<String, dynamic>() ?? {};
+      final tutorsRaw = (data['tutors'] as List?) ?? const [];
+      final studentsRaw = (data['students'] as List?) ?? const [];
+      final tutors =
+          tutorsRaw.map((e) => (e as Map).cast<String, dynamic>()).toList();
+      final students =
+          studentsRaw.map((e) => (e as Map).cast<String, dynamic>()).toList();
+      final lines = <String>[];
+      if (tutors.isNotEmpty) {
+        lines.add('Tutors:');
+        for (final t in tutors) {
+          lines.add('• ${t['fullName']} — ${t['email']} / ${t['password']}');
+        }
+      }
+      if (students.isNotEmpty) {
+        lines.add('');
+        lines.add('Students:');
+        for (final s in students) {
+          lines.add('• ${s['fullName']} — ${s['email']} / ${s['password']}');
+        }
+      }
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Seed Complete'),
+          content: SingleChildScrollView(child: Text(lines.join('\n'))),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'))
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Seed failed: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error),
+      );
+    }
   }
 
   Widget _buildMobileDrawer() {
