@@ -395,83 +395,91 @@ class _SearchPageState extends State<SearchPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return SafeArea(
-          child: FractionallySizedBox(
-            heightFactor: 0.9,
-            child: SingleChildScrollView(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: 20 + MediaQuery.of(context).viewInsets.bottom,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Filter Classes',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  const Text('Subjects'),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: kSubjectOptions.take(12).map((s) {
-                      final selected = _selectedSubjectCodes.contains(s.code);
-                      return FilterChip(
-                        label: Text(s.label),
-                        selected: selected,
-                        onSelected: (val) {
-                          setState(() {
-                            if (val) {
-                              _selectedSubjectCodes.add(s.code);
-                            } else {
-                              _selectedSubjectCodes.remove(s.code);
-                            }
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 20),
-                  CheckboxListTile(
-                    value: _useMyArea,
-                    onChanged: (v) => setState(() => _useMyArea = v ?? false),
-                    title: const Text('Show only classes in my area'),
-                    subtitle: Text(_studentAreaCode == null
-                        ? 'Area not set'
-                        : _areaName(_studentAreaCode)),
-                  ),
-                  CheckboxListTile(
-                    value: _useMyPreferences,
-                    onChanged: (v) =>
-                        setState(() => _useMyPreferences = v ?? true),
-                    title: const Text('Prefer my subjects of interest'),
-                    subtitle: Text(_studentSubjects.isEmpty
-                        ? 'No preferences set'
-                        : _studentSubjects.map(_subjectName).join(', ')),
-                  ),
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Center(child: Text('Close')),
-                  ),
-                ],
+        return StatefulBuilder(builder: (context, modalSetState) {
+          void updateBoth(VoidCallback fn) {
+            modalSetState(fn);
+            setState(() {});
+          }
+
+          return SafeArea(
+            child: FractionallySizedBox(
+              heightFactor: 0.9,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 20,
+                  bottom: 20 + MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Filter Classes',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    const Text('Subjects'),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: kSubjectOptions.take(12).map((s) {
+                        final selected = _selectedSubjectCodes.contains(s.code);
+                        return FilterChip(
+                          label: Text(s.label),
+                          selected: selected,
+                          onSelected: (val) {
+                            updateBoth(() {
+                              if (val) {
+                                _selectedSubjectCodes.add(s.code);
+                              } else {
+                                _selectedSubjectCodes.remove(s.code);
+                              }
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 20),
+                    CheckboxListTile(
+                      value: _useMyArea,
+                      onChanged: (v) =>
+                          updateBoth(() => _useMyArea = v ?? false),
+                      title: const Text('Show only classes in my area'),
+                      subtitle: Text(_studentAreaCode == null
+                          ? 'Area not set'
+                          : _areaName(_studentAreaCode)),
+                    ),
+                    CheckboxListTile(
+                      value: _useMyPreferences,
+                      onChanged: (v) =>
+                          updateBoth(() => _useMyPreferences = v ?? true),
+                      title: const Text('Prefer my subjects of interest'),
+                      subtitle: Text(_studentSubjects.isEmpty
+                          ? 'No preferences set'
+                          : _studentSubjects.map(_subjectName).join(', ')),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Center(child: Text('Close')),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        );
+          );
+        });
       },
     );
   }
