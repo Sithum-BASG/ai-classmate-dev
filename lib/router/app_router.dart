@@ -33,6 +33,8 @@ import '../screens/tutor/tutor_student_details_page.dart';
 import '../screens/tutor/tutor_subscription_page.dart';
 import '../screens/tutor/create_session_page.dart';
 import '../screens/tutor/tutor_session_details_page.dart';
+import '../screens/student_class_details_page.dart';
+import '../screens/student_enrollment_details_page.dart';
 
 final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -124,7 +126,14 @@ final GoRouter appRouter = GoRouter(
       path: '/class/:id',
       builder: (context, state) {
         final classId = state.pathParameters['id'] ?? '';
-        return ClassDetailPage(classId: classId);
+        return StudentClassDetailsPage(classId: classId);
+      },
+    ),
+    GoRoute(
+      path: '/enrollment/:id',
+      builder: (context, state) {
+        final enrollmentId = state.pathParameters['id'] ?? '';
+        return StudentEnrollmentDetailsPage(enrollmentId: enrollmentId);
       },
     ),
 
@@ -222,19 +231,7 @@ final GoRouter appRouter = GoRouter(
   ],
 );
 
-// Placeholder pages
-class ClassDetailPage extends StatelessWidget {
-  final String classId;
-  const ClassDetailPage({super.key, required this.classId});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Class $classId')),
-      body: Center(child: Text('Class Detail for ID: $classId')),
-    );
-  }
-}
+// Removed placeholder ClassDetailPage; route now uses StudentClassDetailsPage
 
 // Not provided by go_router versions < 14; simple notifier that refreshes on a stream event.
 class GoRouterRefreshStream extends ChangeNotifier {

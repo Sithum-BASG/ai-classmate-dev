@@ -121,6 +121,7 @@ export const enrollInClass = functions
       trx.set(invoiceRef, {
         invoiceId: invoiceRef.id,
         enrollmentId: enrollmentRef.id,
+        studentId, // for Firestore rules read access
         amountDue: amount,
         status: 'awaiting_proof',
         dueDate: dueDate.toISOString().slice(0, 10),
@@ -172,6 +173,31 @@ export const submitPaymentProof = functions
     return { ok: true };
   });
 
+
+// unenrollFromClass: student cancels their enrollment
+// data: { enrollmentId: string }
+export const unenrollFromClass = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+    const studentId = context.auth.uid;
+    const role = (context.auth.token as any).role;
+    if (role !== 'student') throw new functions.https.HttpsError('permission-denied', 'Student role required');
+
+    const enrollmentId = data?.enrollmentId as string;
+    if (!enrollmentId) throw new functions.https.HttpsError('invalid-argument', 'enrollmentId is required');
+
+    const db = getFirestore();
+    const enrollRef = db.collection('enrollments').doc(enrollmentId);
+    const snap = await enrollRef.get();
+    if (!snap.exists) throw new functions.https.HttpsError('not-found', 'Enrollment not found');
+    const en = snap.data() as any;
+    if (en.studentId !== studentId) throw new functions.https.HttpsError('permission-denied', 'Not your enrollment');
+    if (en.status === 'cancelled') return { ok: true, status: 'cancelled' };
+
+    await enrollRef.set({ status: 'cancelled', cancelledAt: isoNow() }, { merge: true });
+    return { ok: true };
+  });
 
 // createOrUpdateSession: validates overlap and writes a session doc
 // data: { classId: string, sessionId?: string, startTime: string, endTime: string, label?: string, venue?: string }

@@ -132,7 +132,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                       color: Colors.transparent,
                       child: InkWell(
                         borderRadius: BorderRadius.circular(12),
-                        onTap: () => context.go('/class/$classId'),
+                        onTap: () => context.go('/enrollment/${e.id}'),
                         child: Padding(
                           padding: const EdgeInsets.all(16),
                           child: Column(
