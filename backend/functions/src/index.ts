@@ -3,7 +3,7 @@ import { REGION } from './config';
 import { initializeAdmin } from './init';
 export { onUserCreate } from './auth_triggers';
 export { setUserRole, approveTutor, revokeTutor } from './roles';
-export { publishClass, enrollInClass, submitPaymentProof, unenrollFromClass, createOrUpdateSession } from './core';
+export { publishClass, enrollInClass, submitPaymentProof, unenrollFromClass, createOrUpdateSession, getOrCreateCurrentMonthInvoice } from './core';
 export { registerFcmToken } from './fcm';
 export { getRecommendations, getSubjectForecast, getClassDemandForecast, getMyClassDemandForecast } from './ai';
 export { getRecommendationsRealtime } from './recs_realtime';

@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:go_router/go_router.dart';
 import '../theme.dart';
 import '../config/subjects.dart';
@@ -20,6 +23,8 @@ class _StudentEnrollmentDetailsPageState
     extends State<StudentEnrollmentDetailsPage> {
   final TextEditingController _proofController = TextEditingController();
   bool _submitting = false;
+  bool _uploading = false;
+  String? _uploadedUrl;
 
   @override
   void dispose() {
@@ -33,18 +38,15 @@ class _StudentEnrollmentDetailsPageState
           .doc(widget.enrollmentId)
           .snapshots();
 
-  Future<DocumentSnapshot<Map<String, dynamic>>?> _loadLatestInvoice(
+  Future<Map<String, dynamic>?> _ensureCurrentMonthInvoice(
       String enrollmentId) async {
-    // Filter by studentId to satisfy security rules and avoid permission-denied on older data
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    final q = await FirebaseFirestore.instance
-        .collection('invoices')
-        .where('enrollmentId', isEqualTo: enrollmentId)
-        .where('studentId', isEqualTo: uid)
-        .limit(1)
-        .get();
-    if (q.docs.isEmpty) return null;
-    return q.docs.first;
+    // Use callable so backend creates invoice for the current month (idempotent)
+    await FirebaseAuth.instance.currentUser?.getIdToken(true);
+    final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
+        .httpsCallable('getOrCreateCurrentMonthInvoice');
+    final res = await callable.call({'enrollmentId': enrollmentId});
+    final map = (res.data as Map?)?.cast<String, dynamic>();
+    return map;
   }
 
   @override
@@ -161,8 +163,8 @@ class _StudentEnrollmentDetailsPageState
                     const SizedBox(height: 20),
 
                     // Payment proof
-                    FutureBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
-                      future: _loadLatestInvoice(widget.enrollmentId),
+                    FutureBuilder<Map<String, dynamic>?>(
+                      future: _ensureCurrentMonthInvoice(widget.enrollmentId),
                       builder: (context, invSnap) {
                         if (invSnap.hasError) {
                           return Padding(
@@ -172,7 +174,7 @@ class _StudentEnrollmentDetailsPageState
                                 style: const TextStyle(color: Colors.red)),
                           );
                         }
-                        final inv = invSnap.data?.data();
+                        final inv = invSnap.data;
                         final status =
                             (inv?['status'] as String?) ?? 'awaiting_proof';
                         final amount =
@@ -213,22 +215,18 @@ class _StudentEnrollmentDetailsPageState
                                 Text('Due: $due',
                                     style: const TextStyle(fontSize: 12)),
                               const SizedBox(height: 12),
-                              TextField(
-                                controller: _proofController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Payment proof URL',
-                                  hintText: 'Paste image/receipt link',
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
+                              _buildUploadArea(context, invoiceId),
                               const SizedBox(height: 8),
                               Align(
                                 alignment: Alignment.centerRight,
                                 child: FilledButton(
                                   onPressed: _submitting
                                       ? null
-                                      : () => _submitProof(context, invoiceId,
-                                          _proofController.text.trim()),
+                                      : (_uploadedUrl == null ||
+                                              invoiceId.isEmpty)
+                                          ? null
+                                          : () => _submitProof(context,
+                                              invoiceId, _uploadedUrl!),
                                   child: _submitting
                                       ? const SizedBox(
                                           height: 20,
@@ -255,11 +253,91 @@ class _StudentEnrollmentDetailsPageState
     );
   }
 
+  Widget _buildUploadArea(BuildContext context, String invoiceId) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_uploadedUrl != null)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(_uploadedUrl!, height: 140, fit: BoxFit.cover),
+          ),
+        if (_uploadedUrl != null) const SizedBox(height: 8),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: _uploading ? null : () => _pickAndUpload(invoiceId),
+              icon: const Icon(Icons.upload),
+              label:
+                  Text(_uploadedUrl == null ? 'Upload image' : 'Replace image'),
+            ),
+            if (_uploading) ...[
+              const SizedBox(width: 12),
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            ]
+          ],
+        ),
+        if (_uploadedUrl == null)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('JPEG/PNG. Max ~5MB',
+                style: TextStyle(fontSize: 12, color: Colors.black54)),
+          )
+      ],
+    );
+  }
+
+  Future<void> _pickAndUpload(String invoiceId) async {
+    try {
+      final picker = ImagePicker();
+      final file = await picker.pickImage(
+          source: ImageSource.gallery, maxWidth: 1600, imageQuality: 85);
+      if (file == null) return;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+
+      setState(() {
+        _uploading = true;
+      });
+
+      final nameParts = file.name.split('.');
+      final ext = nameParts.isNotEmpty ? nameParts.last.toLowerCase() : 'jpg';
+      final safeExt =
+          ['jpg', 'jpeg', 'png', 'webp', 'heic'].contains(ext) ? ext : 'jpg';
+      final filename = '${DateTime.now().millisecondsSinceEpoch}.$safeExt';
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('payment_proofs/$uid/$invoiceId/$filename');
+      final metadata = SettableMetadata(contentType: 'image/$safeExt');
+      await ref.putFile(File(file.path), metadata);
+      final url = await ref.getDownloadURL();
+
+      setState(() {
+        _uploadedUrl = url;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Upload failed: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _uploading = false;
+        });
+      }
+    }
+  }
+
   Future<void> _submitProof(
       BuildContext context, String invoiceId, String proofUrl) async {
     if (invoiceId.isEmpty || proofUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid proof URL')),
+        const SnackBar(content: Text('Please upload a payment proof image')),
       );
       return;
     }
@@ -271,6 +349,9 @@ class _StudentEnrollmentDetailsPageState
       await callable.call({'invoiceId': invoiceId, 'proofUrl': proofUrl});
       if (!mounted) return;
       _proofController.clear();
+      setState(() {
+        _uploadedUrl = null;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Payment proof submitted')),
       );

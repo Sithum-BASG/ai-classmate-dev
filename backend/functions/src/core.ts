@@ -285,3 +285,52 @@ export const createOrUpdateSession = functions
   });
 
 
+// getOrCreateCurrentMonthInvoice: returns existing invoice for current month or creates one
+// data: { enrollmentId: string }
+export const getOrCreateCurrentMonthInvoice = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+    const studentId = context.auth.uid;
+    const role = (context.auth.token as any).role;
+    if (role !== 'student') throw new functions.https.HttpsError('permission-denied', 'Student role required');
+
+    const enrollmentId = data?.enrollmentId as string;
+    if (!enrollmentId) throw new functions.https.HttpsError('invalid-argument', 'enrollmentId is required');
+
+    const db = getFirestore();
+    const enrollSnap = await db.collection('enrollments').doc(enrollmentId).get();
+    if (!enrollSnap.exists) throw new functions.https.HttpsError('not-found', 'Enrollment not found');
+    const enrollment = enrollSnap.data() as any;
+    if (enrollment.studentId !== studentId) {
+      throw new functions.https.HttpsError('permission-denied', 'Not your enrollment');
+    }
+
+    const now = new Date();
+    const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`; // e.g., 2025-10
+    const invoiceId = `${enrollmentId}_${period}`; // deterministic ID avoids composite index
+    const invoiceRef = db.collection('invoices').doc(invoiceId);
+    const invSnap = await invoiceRef.get();
+
+    if (!invSnap.exists) {
+      const classSnap = await db.collection('classes').doc(enrollment.classId).get();
+      if (!classSnap.exists) throw new functions.https.HttpsError('not-found', 'Class not found');
+      const c = classSnap.data() as any;
+      const amount = Number(c.price ?? c.fee ?? 0);
+      const dueDate = addDays(now, 7);
+      await invoiceRef.set({
+        invoiceId,
+        enrollmentId,
+        studentId,
+        amountDue: amount,
+        status: 'awaiting_proof',
+        dueDate: dueDate.toISOString().slice(0, 10),
+        createdAt: isoNow(),
+        period
+      });
+    }
+
+    const out = await invoiceRef.get();
+    return out.data();
+  });
+
