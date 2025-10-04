@@ -83,6 +83,20 @@ class _SearchPageState extends State<SearchPage> {
     super.dispose();
   }
 
+  Stream<Set<String>> _enrolledClassIdsStream() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return Stream<Set<String>>.value(<String>{});
+    return FirebaseFirestore.instance
+        .collection('enrollments')
+        .where('studentId', isEqualTo: uid)
+        .where('status', whereIn: ['active', 'pending'])
+        .snapshots()
+        .map((q) => q.docs
+            .map((d) => (d.data()['classId'] as String?) ?? '')
+            .where((id) => id.isNotEmpty)
+            .toSet());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -154,124 +168,101 @@ class _SearchPageState extends State<SearchPage> {
           Expanded(
             child: _loadingProfile
                 ? const Center(child: CircularProgressIndicator())
-                : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: _classesQuery().snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      if (snapshot.hasError) {
-                        return Center(
-                          child: Text('Error: ${snapshot.error}'),
-                        );
-                      }
-                      var docs = snapshot.data?.docs ?? [];
-                      // Client-side filters: subject multiselect, search text
-                      final text = _searchController.text.trim().toLowerCase();
-                      docs = docs.where((d) {
-                        final data = d.data();
-                        final name =
-                            (data['name'] as String?)?.toLowerCase() ?? '';
-                        final subject = (data['subject_code'] as String?) ?? '';
-                        final matchesText = text.isEmpty || name.contains(text);
-                        final subjectOk = _selectedSubjectCodes.isEmpty ||
-                            _selectedSubjectCodes.contains(subject);
-                        return matchesText && subjectOk;
-                      }).toList();
-                      if (docs.isEmpty) {
-                        return const Center(child: Text('No classes found.'));
-                      }
-                      final docsKey = docs.map((d) => d.id).join(',');
-                      if (_lastDocsKey == docsKey && _lastSorted != null) {
-                        final sortedDocs = _lastSorted!;
-                        // Debug banner for scores
-                        if (_recScores.isNotEmpty) {
-                          final top = sortedDocs.isNotEmpty
-                              ? sortedDocs.first.id
-                              : null;
-                          return Column(
-                            children: [
-                              if (top != null)
-                                Container(
-                                  color: Colors.yellow.withValues(alpha: 0.2),
-                                  padding: const EdgeInsets.all(8),
-                                  child: Text('Recs active. Top score: '
-                                      '${_recScores[top]?.toStringAsFixed(3) ?? '0'}'),
-                                ),
-                              Expanded(
-                                child: ListView.builder(
-                                  padding: const EdgeInsets.all(16),
-                                  itemCount: sortedDocs.length,
-                                  itemBuilder: (context, i) {
-                                    final doc = sortedDocs[i];
-                                    final c = doc.data();
-                                    return _buildClassCard(doc.id, c);
-                                  },
-                                ),
-                              ),
-                            ],
-                          );
-                        }
-                        return ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: sortedDocs.length,
-                          itemBuilder: (context, i) {
-                            final doc = sortedDocs[i];
-                            final c = doc.data();
-                            return _buildClassCard(doc.id, c);
-                          },
-                        );
-                      }
-                      return FutureBuilder<
-                          List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
-                        future: _sortByRecommendations(
-                            docs.map((d) => d.id).toList(), docs),
-                        builder: (context, sortedSnap) {
-                          final sortedDocs = sortedSnap.data ?? docs;
-                          // Debug banner for scores
-                          if (_recScores.isNotEmpty) {
-                            final top = sortedDocs.isNotEmpty
-                                ? sortedDocs.first.id
-                                : null;
-                            return Column(
-                              children: [
-                                if (top != null)
-                                  Container(
-                                    color: Colors.yellow.withValues(alpha: 0.2),
-                                    padding: const EdgeInsets.all(8),
-                                    child: Text('Recs active. Top score: '
-                                        '${_recScores[top]?.toStringAsFixed(3) ?? '0'}'),
-                                  ),
-                                Expanded(
-                                  child: ListView.builder(
-                                    padding: const EdgeInsets.all(16),
-                                    itemCount: sortedDocs.length,
-                                    itemBuilder: (context, i) {
-                                      final doc = sortedDocs[i];
-                                      final c = doc.data();
-                                      return _buildClassCard(doc.id, c);
-                                    },
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-                          return ListView.builder(
-                            padding: const EdgeInsets.all(16),
-                            itemCount: sortedDocs.length,
-                            itemBuilder: (context, i) {
-                              final doc = sortedDocs[i];
-                              final c = doc.data();
-                              return _buildClassCard(doc.id, c);
-                            },
-                          );
-                        },
-                      );
-                    },
-                  ),
+                : _buildClassList(),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildClassList() {
+    return StreamBuilder<Set<String>>(
+      stream: _enrolledClassIdsStream(),
+      builder: (context, enrSnap) {
+        final enrolledIds = enrSnap.data ?? <String>{};
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: _classesQuery().snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(
+                child: Text('Error: ${snapshot.error}'),
+              );
+            }
+            var docs = snapshot.data?.docs ?? [];
+            // Client-side filters: subject multiselect, search text
+            final text = _searchController.text.trim().toLowerCase();
+            docs = docs.where((d) {
+              final data = d.data();
+              final name = (data['name'] as String?)?.toLowerCase() ?? '';
+              final subject = (data['subject_code'] as String?) ?? '';
+              final matchesText = text.isEmpty || name.contains(text);
+              final subjectOk = _selectedSubjectCodes.isEmpty ||
+                  _selectedSubjectCodes.contains(subject);
+              final notEnrolled = !enrolledIds.contains(d.id);
+              return matchesText && subjectOk && notEnrolled;
+            }).toList();
+            if (docs.isEmpty) {
+              return const Center(child: Text('No classes found.'));
+            }
+            final docsKey = docs.map((d) => d.id).join(',');
+            if (_lastDocsKey == docsKey && _lastSorted != null) {
+              final sortedDocs = _lastSorted!;
+              return _buildSortedList(sortedDocs);
+            }
+            return FutureBuilder<
+                List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+              future:
+                  _sortByRecommendations(docs.map((d) => d.id).toList(), docs),
+              builder: (context, sortedSnap) {
+                final sortedDocs = sortedSnap.data ?? docs;
+                return _buildSortedList(sortedDocs);
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSortedList(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> sortedDocs) {
+    if (_recScores.isNotEmpty) {
+      final top = sortedDocs.isNotEmpty ? sortedDocs.first.id : null;
+      return Column(
+        children: [
+          if (top != null)
+            Container(
+              color: Colors.yellow.withValues(alpha: 0.2),
+              padding: const EdgeInsets.all(8),
+              child: Text(
+                'Recs active. Top score: ${_recScores[top]?.toStringAsFixed(3) ?? '0'}',
+              ),
+            ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: sortedDocs.length,
+              itemBuilder: (context, i) {
+                final doc = sortedDocs[i];
+                final c = doc.data();
+                return _buildClassCard(doc.id, c);
+              },
+            ),
+          ),
+        ],
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: sortedDocs.length,
+      itemBuilder: (context, i) {
+        final doc = sortedDocs[i];
+        final c = doc.data();
+        return _buildClassCard(doc.id, c);
+      },
     );
   }
 
@@ -444,9 +435,44 @@ class _SearchPageState extends State<SearchPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if ((c['tutorId'] as String?) != null &&
+                        (c['tutorId'] as String).isNotEmpty)
+                      Row(
+                        children: [
+                          const Icon(Icons.person,
+                              size: 16, color: AppTheme.brandPrimary),
+                          const SizedBox(width: 6),
+                          FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                            future: FirebaseFirestore.instance
+                                .collection('tutor_profiles')
+                                .doc(c['tutorId'] as String)
+                                .get(),
+                            builder: (context, snap) {
+                              final data =
+                                  snap.data?.data() ?? <String, dynamic>{};
+                              final tn =
+                                  (data['full_name'] as String?) ?? 'Tutor';
+                              return Text(
+                                'Tutor: $tn',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.brandPrimary,
+                                    ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 2),
                     Text(
                       (c['name'] as String?) ?? 'Class',
-                      style: Theme.of(context).textTheme.titleMedium,
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 4),
                     Text(
