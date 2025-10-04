@@ -22,6 +22,9 @@ class _SearchPageState extends State<SearchPage> {
   bool _useMyArea = false;
   bool _useMyPreferences = false;
   bool _isStudent = false;
+  Map<String, num> _recScores = const {};
+  String? _lastDocsKey;
+  List<QueryDocumentSnapshot<Map<String, dynamic>>>? _lastSorted;
 
   int? _studentGrade;
   String? _studentAreaCode;
@@ -178,13 +181,90 @@ class _SearchPageState extends State<SearchPage> {
                       if (docs.isEmpty) {
                         return const Center(child: Text('No classes found.'));
                       }
-                      return ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: docs.length,
-                        itemBuilder: (context, i) {
-                          final doc = docs[i];
-                          final c = doc.data();
-                          return _buildClassCard(doc.id, c);
+                      final docsKey = docs.map((d) => d.id).join(',');
+                      if (_lastDocsKey == docsKey && _lastSorted != null) {
+                        final sortedDocs = _lastSorted!;
+                        // Debug banner for scores
+                        if (_recScores.isNotEmpty) {
+                          final top = sortedDocs.isNotEmpty
+                              ? sortedDocs.first.id
+                              : null;
+                          return Column(
+                            children: [
+                              if (top != null)
+                                Container(
+                                  color: Colors.yellow.withValues(alpha: 0.2),
+                                  padding: const EdgeInsets.all(8),
+                                  child: Text('Recs active. Top score: '
+                                      '${_recScores[top]?.toStringAsFixed(3) ?? '0'}'),
+                                ),
+                              Expanded(
+                                child: ListView.builder(
+                                  padding: const EdgeInsets.all(16),
+                                  itemCount: sortedDocs.length,
+                                  itemBuilder: (context, i) {
+                                    final doc = sortedDocs[i];
+                                    final c = doc.data();
+                                    return _buildClassCard(doc.id, c);
+                                  },
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+                        return ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: sortedDocs.length,
+                          itemBuilder: (context, i) {
+                            final doc = sortedDocs[i];
+                            final c = doc.data();
+                            return _buildClassCard(doc.id, c);
+                          },
+                        );
+                      }
+                      return FutureBuilder<
+                          List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+                        future: _sortByRecommendations(
+                            docs.map((d) => d.id).toList(), docs),
+                        builder: (context, sortedSnap) {
+                          final sortedDocs = sortedSnap.data ?? docs;
+                          // Debug banner for scores
+                          if (_recScores.isNotEmpty) {
+                            final top = sortedDocs.isNotEmpty
+                                ? sortedDocs.first.id
+                                : null;
+                            return Column(
+                              children: [
+                                if (top != null)
+                                  Container(
+                                    color: Colors.yellow.withValues(alpha: 0.2),
+                                    padding: const EdgeInsets.all(8),
+                                    child: Text('Recs active. Top score: '
+                                        '${_recScores[top]?.toStringAsFixed(3) ?? '0'}'),
+                                  ),
+                                Expanded(
+                                  child: ListView.builder(
+                                    padding: const EdgeInsets.all(16),
+                                    itemCount: sortedDocs.length,
+                                    itemBuilder: (context, i) {
+                                      final doc = sortedDocs[i];
+                                      final c = doc.data();
+                                      return _buildClassCard(doc.id, c);
+                                    },
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+                          return ListView.builder(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: sortedDocs.length,
+                            itemBuilder: (context, i) {
+                              final doc = sortedDocs[i];
+                              final c = doc.data();
+                              return _buildClassCard(doc.id, c);
+                            },
+                          );
                         },
                       );
                     },
@@ -193,6 +273,65 @@ class _SearchPageState extends State<SearchPage> {
         ],
       ),
     );
+  }
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+      _sortByRecommendations(List<String> classIds,
+          List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return docs;
+      await user.getIdToken(true);
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('getRecommendationsRealtime');
+      final res = await callable.call({
+        'studentId': user.uid,
+        'limit': 50,
+        'debug': true,
+        'classIds': classIds,
+      });
+      final data = (res.data as Map?)?.cast<String, dynamic>() ?? {};
+      // Prefer results; some versions return under data.results
+      final raw = (data['results'] as List?) ?? (data['data'] as List?) ?? [];
+      final results = raw
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .map((m) => {
+                'class_id': m['classId'] ?? m['class_id'],
+                'score': m['score'] ??
+                    m['predicted_probability'] ??
+                    m['predicted_value'] ??
+                    m['value'] ??
+                    0
+              })
+          .toList();
+      // Build score map for classId
+      final Map<String, num> scoreById = {
+        for (final r in results)
+          (r['class_id']?.toString() ?? ''): (r['score'] as num? ?? 0)
+      };
+      if (mounted) setState(() => _recScores = scoreById);
+      // For classes not in results, score 0; keep stable order by created_at if tie
+      final withOriginalIndex = [for (int i = 0; i < docs.length; i++) i];
+      withOriginalIndex.sort((a, b) {
+        final ca = docs[a];
+        final cb = docs[b];
+        final sa = scoreById[ca.id] ?? 0;
+        final sb = scoreById[cb.id] ?? 0;
+        if (sa != sb) return sb.compareTo(sa);
+        // fallback to created_at desc if available
+        final ta = (ca.data()['created_at'] as Timestamp?);
+        final tb = (cb.data()['created_at'] as Timestamp?);
+        if (ta != null && tb != null) return tb.compareTo(ta);
+        return a.compareTo(b);
+      });
+      final sorted = withOriginalIndex.map((i) => docs[i]).toList();
+      // Cache to prevent blinking while FutureBuilder resolves repeatedly
+      _lastDocsKey = docs.map((d) => d.id).join(',');
+      _lastSorted = sorted;
+      return sorted;
+    } catch (_) {
+      return docs; // fail open
+    }
   }
 
   Query<Map<String, dynamic>> _classesQuery() {
@@ -346,6 +485,20 @@ class _SearchPageState extends State<SearchPage> {
               Icon(Icons.school, size: 16, color: Colors.grey[600]),
               const SizedBox(width: 4),
               Text('Grade ${(c['grade'] as num?)?.toInt() ?? 0}'),
+              const Spacer(),
+              if (_recScores.containsKey(classId))
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'Score ${(_recScores[classId] as num).toDouble().toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 12, color: Colors.purple),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 12),

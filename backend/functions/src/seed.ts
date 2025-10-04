@@ -34,6 +34,29 @@ export const seedTestData = functions
     const db = getFirestore();
     const now = new Date();
 
+    // Wipe previous seeded data safely (by our known emails and by labels)
+    const seedTutorEmails = [
+      'nimal.tutor1+dev@ai-classmate.dev',
+      'shalini.tutor2+dev@ai-classmate.dev'
+    ];
+    const seedStudentEmails = [
+      'anushka.student1+dev@ai-classmate.dev',
+      'kavindu.student2+dev@ai-classmate.dev',
+      'isuri.student3+dev@ai-classmate.dev',
+      'pasindu.student4+dev@ai-classmate.dev'
+    ];
+
+    // Delete previous classes created by seed (tagged with seeded: true)
+    const oldClasses = await db.collection('classes').where('seeded', '==', true).get();
+    await Promise.all(oldClasses.docs.map(async (d) => {
+      const sess = await d.ref.collection('sessions').get();
+      await Promise.all(sess.docs.map((s) => s.ref.delete()));
+      await d.ref.delete();
+    }));
+    // Delete enrollments linked to seed synthetic students
+    const oldEnrs = await db.collection('enrollments').where('studentId', '>=', 'seed_pop_').where('studentId', '<', 'seed_pop_~').get();
+    await Promise.all(oldEnrs.docs.map((d) => d.ref.delete()));
+
     const tutors: SeedUserDef[] = [
       {
         email: 'nimal.tutor1+dev@ai-classmate.dev',
@@ -41,7 +64,7 @@ export const seedTestData = functions
         fullName: 'Nimal Perera',
         role: 'tutor',
         areaCode: 'CMB-05',
-        subjects: ['OL_MATH']
+        subjects: ['OL_MATH', 'OL_ENG']
       },
       {
         email: 'shalini.tutor2+dev@ai-classmate.dev',
@@ -49,7 +72,7 @@ export const seedTestData = functions
         fullName: 'Shalini Silva',
         role: 'tutor',
         areaCode: 'CMB-06',
-        subjects: ['OL_SCI']
+        subjects: ['OL_SCI', 'AL_PHYS']
       }
     ];
 
@@ -70,6 +93,24 @@ export const seedTestData = functions
         role: 'student',
         grade: 10,
         areaCode: 'CMB-06',
+        subjects: ['OL_MATH']
+      },
+      {
+        email: 'isuri.student3+dev@ai-classmate.dev',
+        password: 'Student123!',
+        fullName: 'Isuri Peries',
+        role: 'student',
+        grade: 11,
+        areaCode: 'CMB-06',
+        subjects: ['OL_SCI']
+      },
+      {
+        email: 'pasindu.student4+dev@ai-classmate.dev',
+        password: 'Student123!',
+        fullName: 'Pasindu Weerasinghe',
+        role: 'student',
+        grade: 11,
+        areaCode: 'CMB-05',
         subjects: ['OL_MATH']
       }
     ];
@@ -127,11 +168,15 @@ export const seedTestData = functions
         {
           name: 'OL Mathematics - Group (Havelock)',
           subject_code: 'OL_MATH',
+          subjectCode: 'OL_MATH',
           type: 'Group',
           mode: 'In-person',
+          modeRaw: 'physical',
           grade: 11,
           area_code: 'CMB-05',
+          areaCode: 'CMB-05',
           price: 5000,
+          priceBand: 'mid',
           max_students: 30,
           capacitySeats: 30,
           description: 'Weekly OL Mathematics group class',
@@ -139,14 +184,50 @@ export const seedTestData = functions
         {
           name: 'OL Science - Individual (Online)',
           subject_code: 'OL_SCI',
+          subjectCode: 'OL_SCI',
           type: 'Individual',
           mode: 'Online',
+          modeRaw: 'online',
           grade: 11,
           area_code: 'CMB-06',
+          areaCode: 'CMB-06',
           price: 3500,
+          priceBand: 'low',
           max_students: 1,
           capacitySeats: 1,
           description: 'One-to-one OL Science online class',
+        },
+        {
+          name: 'OL English - Group (Kollupitiya)',
+          subject_code: 'OL_ENG',
+          subjectCode: 'OL_ENG',
+          type: 'Group',
+          mode: 'In-person',
+          modeRaw: 'physical',
+          grade: 10,
+          area_code: 'CMB-03',
+          areaCode: 'CMB-03',
+          price: 3000,
+          priceBand: 'low',
+          max_students: 25,
+          capacitySeats: 25,
+          description: 'OL English weekly group',
+        },
+        {
+          name: 'A/L Physics - Hybrid',
+          subject_code: 'AL_PHYS',
+          subjectCode: 'AL_PHYS',
+          type: 'Group',
+          mode: 'Hybrid',
+          modeRaw: 'hybrid',
+          grade: 12,
+          area_code: 'CMB-07',
+          areaCode: 'CMB-07',
+          price: 6500,
+          priceBand: 'high',
+          max_students: 40,
+          capacitySeats: 40,
+          description: 'Advanced Physics hybrid class',
         }
       ];
 
@@ -160,6 +241,7 @@ export const seedTestData = functions
           enrolled_count: 0,
           total_income: 0,
           status: 'draft',
+          seeded: true,
           created_at: new Date(),
         });
 
@@ -172,6 +254,42 @@ export const seedTestData = functions
         await classRef.set({ status: 'published', publishedAt: isoNow() }, { merge: true });
         dayOffset += 1; // next class starts next day to avoid clash
       }
+    }
+
+    // Create popularity signal via enrollments across tutors
+    const allClasses = await getFirestore().collection('classes').where('status', '==', 'published').get();
+    const classIdsByTutor = new Map<string, string[]>();
+    allClasses.docs.forEach((d) => {
+      const tutorId = (d.data() as any).tutorId as string;
+      if (!classIdsByTutor.has(tutorId)) classIdsByTutor.set(tutorId, []);
+      classIdsByTutor.get(tutorId)!.push(d.id);
+    });
+
+    async function createEnrollment(studentId: string, classId: string) {
+      const ref = getFirestore().collection('enrollments').doc();
+      await ref.set({ enrollmentId: ref.id, studentId, classId, status: 'active', enrolledAt: isoNow() });
+    }
+
+    const [t1, t2] = createdTutors.map((x) => x.uid as string);
+    const t1Classes = classIdsByTutor.get(t1 || '') || [];
+    const t2Classes = classIdsByTutor.get(t2 || '') || [];
+
+    // More enrollments for tutor1 to boost popularity
+    for (let i = 0; i < 10; i++) {
+      const sid = `seed_pop_s1_${i}`;
+      if (t1Classes[0]) await createEnrollment(sid, t1Classes[0]);
+    }
+    for (let i = 0; i < 4; i++) {
+      const sid = `seed_pop_s2_${i}`;
+      if (t2Classes[0]) await createEnrollment(sid, t2Classes[0]);
+    }
+
+    // Enroll real seeded students to create personal schedule and more variance
+    if (createdStudents.length >= 2 && t1Classes[0]) {
+      await createEnrollment(createdStudents[0].uid, t1Classes[0]);
+    }
+    if (createdStudents.length >= 3 && t2Classes[0]) {
+      await createEnrollment(createdStudents[2].uid, t2Classes[0]);
     }
 
     return {

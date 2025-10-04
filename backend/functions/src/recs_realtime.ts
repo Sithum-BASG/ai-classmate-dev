@@ -1,7 +1,7 @@
 import * as functions from 'firebase-functions';
 import { REGION, DATA_PLATFORM } from './config';
 import { getFirestore } from './init';
-import { timesOverlap } from './utils';
+import { timesOverlapDate } from './utils';
 // no-op import removed; we use GoogleAuth dynamically in code
 
 // We will call Vertex AI Endpoint directly via REST
@@ -18,6 +18,7 @@ interface RealtimeRequest {
   studentId: string;
   limit?: number;
   debug?: boolean;
+  classIds?: string[];
 }
 
 function toDistanceBucket(distanceKm: number): string {
@@ -34,6 +35,7 @@ export const getRecommendationsRealtime = functions
     const studentId = data?.studentId || context.auth.uid;
     const limit = Math.min(Math.max(Number(data?.limit || 10), 1), 50);
     const debug = Boolean(data?.debug);
+    const providedClassIds: string[] = Array.isArray(data?.classIds) ? (data?.classIds as string[]) : [];
 
     const db = getFirestore();
     const student = await db.collection('student_profiles').doc(studentId).get();
@@ -45,9 +47,16 @@ export const getRecommendationsRealtime = functions
     const areaCode: string = s.area_code || s.areaCode || null;
     const grade: number = Number(s.grade || 0);
 
-    let query = db.collection('classes').where('status', '==', 'published');
-    if (grade) query = query.where('grade', '==', grade);
-    const classesSnap = await query.limit(200).get();
+    let classesDocs: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>[] = [];
+    if (providedClassIds.length) {
+      const snaps = await Promise.all(providedClassIds.map((id) => db.collection('classes').doc(id).get()));
+      classesDocs = snaps.filter((s) => s.exists).map((s) => ({ id: s.id, data: () => s.data()! } as any));
+    } else {
+      let query = db.collection('classes').where('status', '==', 'published');
+      if (grade) query = query.where('grade', '==', grade);
+      const classesSnap = await query.limit(200).get();
+      classesDocs = classesSnap.docs;
+    }
 
     // Build student's existing session schedule from active/pending enrollments
     const myEnrs = await db
@@ -56,16 +65,17 @@ export const getRecommendationsRealtime = functions
       .where('status', 'in', ['active', 'pending'])
       .get();
     const myClassIds = myEnrs.docs.map((d) => (d.data() as any).classId);
-    const mySessions: Array<{ date: string; start: string; end: string }> = [];
+    const mySessions: Array<{ start: Date; end: Date }> = [];
     for (const cid of myClassIds) {
       const s = await db.collection('classes').doc(cid).collection('sessions').get();
       s.forEach((doc) => {
         const v = doc.data() as any;
-        mySessions.push({
-          date: v.session_date || v.date,
-          start: v.start_time || v.startTime,
-          end: v.end_time || v.endTime
-        });
+        const sStartRaw = v.start_time || v.startTime;
+        const sEndRaw = v.end_time || v.endTime;
+        if (!sStartRaw || !sEndRaw) return;
+        const sStart: Date = sStartRaw.toDate ? sStartRaw.toDate() : new Date(sStartRaw);
+        const sEnd: Date = sEndRaw.toDate ? sEndRaw.toDate() : new Date(sEndRaw);
+        mySessions.push({ start: sStart, end: sEnd });
       });
     }
 
@@ -75,7 +85,7 @@ export const getRecommendationsRealtime = functions
     enrollment90dSince.setDate(enrollment90dSince.getDate() - 90);
 
     const tutors = new Map<string, number>();
-    for (const c of classesSnap.docs) {
+    for (const c of classesDocs) {
       const tutorId = (c.data() as any).tutorId;
       tutors.set(tutorId, 0);
     }
@@ -86,7 +96,7 @@ export const getRecommendationsRealtime = functions
         .get();
       // Map enrollment -> class -> tutor
       const classMap = new Map<string, string>();
-      for (const c of classesSnap.docs) classMap.set(c.id, (c.data() as any).tutorId);
+      for (const c of classesDocs) classMap.set(c.id, (c.data() as any).tutorId);
       enrSnap.forEach((e) => {
         const clzId = (e.data() as any).classId;
         const tutorId = classMap.get(clzId);
@@ -98,11 +108,21 @@ export const getRecommendationsRealtime = functions
     // Build instances for Vertex prediction
     const instances: any[] = [];
     const classIds: string[] = [];
-    for (const c of classesSnap.docs) {
+    for (const c of classesDocs) {
       const cl = c.data() as any;
-      // subject and area filters (simplified)
-      if (subjects.length && cl.subjectCode && !subjects.includes(cl.subjectCode)) continue;
-      if (areaCode && cl.areaCode && cl.areaCode !== areaCode) continue;
+      // Normalize common fields
+      const subj = cl.subjectCode || cl.subject_code || '';
+      const area = cl.areaCode || cl.area_code || '';
+      const modeNorm = String(cl.mode || '').toLowerCase();
+      const price = Number(cl.price || cl.fee || 0);
+      const priceBand = cl.priceBand || (price <= 3500 ? 'low' : price <= 5500 ? 'mid' : 'high');
+
+      // subject and area filters (skip when classIds explicitly provided)
+      const isOnline = modeNorm === 'online';
+      if (!providedClassIds.length) {
+        if (subjects.length && subj && !subjects.includes(subj)) continue;
+        if (!isOnline && areaCode && area && area !== areaCode) continue;
+      }
 
       const popularity = (tutors.get(cl.tutorId) || 0) / maxPop * 100.0;
 
@@ -111,11 +131,14 @@ export const getRecommendationsRealtime = functions
       const candSessionsSnap = await db.collection('classes').doc(c.id).collection('sessions').limit(8).get();
       candSessionsSnap.forEach((cs) => {
         const v = cs.data() as any;
-        const cDate = v.session_date || v.date;
-        const cStart = v.start_time || v.startTime;
-        const cEnd = v.end_time || v.endTime;
+        const cStartRaw = v.start_time || v.startTime;
+        const cEndRaw = v.end_time || v.endTime;
+        if (!cStartRaw || !cEndRaw) return;
+        const cStart: Date = cStartRaw.toDate ? cStartRaw.toDate() : new Date(cStartRaw);
+        const cEnd: Date = cEndRaw.toDate ? cEndRaw.toDate() : new Date(cEndRaw);
         for (const mine of mySessions) {
-          if (mine.date === cDate && timesOverlap(mine.start, mine.end, cStart, cEnd)) {
+          if (mine.start.toDateString() !== cStart.toDateString()) continue;
+          if (timesOverlapDate(mine.start, mine.end, cStart, cEnd)) {
             timeOk = false;
             break;
           }
@@ -124,22 +147,23 @@ export const getRecommendationsRealtime = functions
 
       // Compute distance bucket from area codes
       let distanceBucket = '10_20km';
-      if (cl.mode === 'online') distanceBucket = '0_5km';
-      else if (areaCode && cl.areaCode) {
+      if (modeNorm === 'online') distanceBucket = '0_5km';
+      else if (areaCode && area) {
         const sCity = String(areaCode).split('-')[0];
-        const cCity = String(cl.areaCode).split('-')[0];
-        if (areaCode === cl.areaCode) distanceBucket = '0_5km';
+        const cArea = area as string;
+        const cCity = String(cArea).split('-')[0];
+        if (areaCode === cArea) distanceBucket = '0_5km';
         else if (sCity === cCity) distanceBucket = '5_10km';
         else distanceBucket = '10_20km';
       }
       instances.push({
         student_id: studentId,
         class_id: c.id,
-        subject_match: subjects.includes(cl.subjectCode || ''),
+        subject_match: subj ? subjects.includes(subj) : false,
         grade_match: Number(cl.grade) === grade,
         time_overlap: timeOk,
         distance_bucket: distanceBucket,
-        price_band_fit: (cl.priceBand || 'mid') === 'mid',
+        price_band_fit: (priceBand || 'mid') === 'mid',
         tutor_popularity: popularity,
         past_clicks_30d: '0',
         past_enrols_90d: '0'
@@ -183,8 +207,9 @@ export const getRecommendationsRealtime = functions
     };
     const results = predictions.map((p, i) => ({ classId: classIds[i], score: getScore(p) }));
     results.sort((a, b) => b.score - a.score);
-    const trimmed = results.slice(0, limit);
-    return debug ? { results: trimmed, debug: { predictions, instancesCount: instances.length } } : { results: trimmed };
+    // If specific classIds were requested, return all scored items (no trimming)
+    const outResults = providedClassIds.length ? results : results.slice(0, limit);
+    return debug ? { results: outResults, debug: { predictions, instancesCount: instances.length } } : { results: outResults };
   });
 
 
