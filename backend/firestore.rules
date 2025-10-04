@@ -9,6 +9,9 @@ service cloud.firestore {
     function isTutor() { return role() == 'tutor'; }
     function isStudent() { return role() == 'student'; }
     function tutorApproved() { return request.auth.token.tutorApproved == true; }
+    function tutorProfileApproved(u) {
+      return get(/databases/$(db)/documents/tutor_profiles/$(u)).data.status == 'approved';
+    }
     function isSelf(targetUserId) { return signedIn() && uid() == targetUserId; }
 
     function getClass(classId) {
@@ -43,11 +46,23 @@ service cloud.firestore {
       allow read: if isAdmin() || isSelf(userId) || (resource.data.status == 'approved');
       allow create: if isSelf(userId);
       // Tutors can update own profile except review/status fields; admins can update all
-      allow update: if (isSelf(userId)
-                      && request.resource.data.status == resource.data.status
+      allow update: if isAdmin()
+                    || (
+                      isSelf(userId)
+                      && !request.resource.data.diff(resource.data)
+                            .changedKeys()
+                            .hasAny(['reviewed_by', 'reviewed_at', 'status'])
+                    )
+                    || (
+                      // Allow self reapply: only change status from rejected -> pending
+                      isSelf(userId)
+                      && request.resource.data.diff(resource.data).changedKeys().size() == 1
+                      && request.resource.data.diff(resource.data).changedKeys().hasAny(['status'])
+                      && resource.data.status == 'rejected'
+                      && request.resource.data.status == 'pending'
                       && request.resource.data.reviewed_by == resource.data.reviewed_by
-                      && request.resource.data.reviewed_at == resource.data.reviewed_at)
-                      || isAdmin();
+                      && request.resource.data.reviewed_at == resource.data.reviewed_at
+                    );
       allow delete: if isAdmin();
     }
 
@@ -57,20 +72,23 @@ service cloud.firestore {
     match /classes/{classId} {
       allow read: if isAdmin()
                   || resource.data.status == 'published'
-                  || (isTutor() && resource.data.tutorId == uid());
-      allow create: if isTutor() && tutorApproved(); // tutor drafts via app are allowed
-      allow update: if (isTutor() && tutorApproved() && resource.data.tutorId == uid()
-                        && request.resource.data.status == resource.data.status) // tutors can't change status directly
+                  || (signedIn() && resource.data.tutorId == uid());
+      // Allow approved tutors (by profile) to create their own class drafts
+      allow create: if signedIn() && tutorProfileApproved(uid());
+      // Tutors can update their own classes while approved, but not change status
+      allow update: if (signedIn() && resource.data.tutorId == uid()
+                        && tutorProfileApproved(uid())
+                        && request.resource.data.status == resource.data.status)
                         || isAdmin();
       allow delete: if isAdmin();
 
       // Class sessions as subcollection: classes/{classId}/sessions/{sessionId}
       match /sessions/{sessionId} {
         allow read: if isAdmin()
-                    || (isTutor() && getClass(classId).data.tutorId == uid())
-                    || classIsPublished(classId);
+                    || classIsPublished(classId)
+                    || (signedIn() && getClass(classId).data.tutorId == uid());
         allow create, update, delete: if isAdmin()
-                                      || (isTutor() && tutorApproved() && getClass(classId).data.tutorId == uid());
+                                      || (signedIn() && tutorProfileApproved(uid()) && getClass(classId).data.tutorId == uid());
       }
 
       // Class announcements subcollection

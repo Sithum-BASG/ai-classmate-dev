@@ -20,6 +20,20 @@ export function timesOverlap(
   return a1 < b2 && b1 < a2;
 }
 
+export function timesOverlapDate(
+  startA: Date,
+  endA: Date,
+  startB: Date,
+  endB: Date
+): boolean {
+  const toMin = (d: Date) => d.getHours() * 60 + d.getMinutes();
+  const a1 = toMin(startA);
+  const a2 = toMin(endA);
+  const b1 = toMin(startB);
+  const b2 = toMin(endB);
+  return a1 < b2 && b1 < a2;
+}
+
 export function addDays(date: Date, days: number): Date {
   const d = new Date(date);
   d.setDate(d.getDate() + days);

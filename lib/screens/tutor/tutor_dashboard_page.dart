@@ -17,30 +17,9 @@ class _TutorDashboardPageState extends State<TutorDashboardPage> {
   final int _activeStudents = 5;
   final double _monthlyIncome = 48000;
   final DateTime _nextPaymentDate = DateTime(2025, 1, 15);
+  Future<QuerySnapshot<Map<String, dynamic>>>? _myClassesFuture;
 
-  final List<Map<String, dynamic>> _todaySchedule = [
-    {
-      'id': '8',
-      'title': 'Physics A/L',
-      'time': '10:00 AM',
-      'type': 'Group',
-      'students': 12,
-    },
-    {
-      'id': '9',
-      'title': 'Mathematics A/L',
-      'time': '2:00 PM',
-      'type': 'Individual',
-      'students': 1,
-    },
-    {
-      'id': '10',
-      'title': 'Chemistry A/L',
-      'time': '4:00 PM',
-      'type': 'Group',
-      'students': 5,
-    },
-  ];
+  // Removed mock _todaySchedule in favor of live Firestore data
 
   void _onBottomNavTap(int index) {
     setState(() => _selectedIndex = index);
@@ -115,11 +94,75 @@ class _TutorDashboardPageState extends State<TutorDashboardPage> {
       if (data == null) return false;
       final status = (data['status'] as String?) ?? '';
       if (status == 'approved') return true;
+      if (status == 'rejected') {
+        if (mounted) {
+          // Redirect to rejection screen with actions
+          // ignore: use_build_context_synchronously
+          context.go('/tutor/pending?rejected=1');
+        }
+        return false;
+      }
     } catch (_) {}
     return false;
   }
 
+  Future<QuerySnapshot<Map<String, dynamic>>> _loadMyClasses() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Stream<QuerySnapshot<Map<String, dynamic>>>.empty()
+          .first; // returns an empty snapshot
+    }
+    return FirebaseFirestore.instance
+        .collection('classes')
+        .where('tutorId', isEqualTo: user.uid)
+        .where('status', whereIn: ['draft', 'published']).get();
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchTodaySessions(
+      Map<String, Map<String, dynamic>> classById) async {
+    final publishedIds = classById.entries
+        .where((e) => (e.value['status'] as String?) == 'published')
+        .map((e) => e.key)
+        .toList();
+    if (publishedIds.isEmpty) return [];
+
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
+
+    // Fetch per-class to satisfy rules and avoid whereIn/10 limit
+    final List<Map<String, dynamic>> items = [];
+    for (final classId in publishedIds) {
+      final snap = await FirebaseFirestore.instance
+          .collection('classes')
+          .doc(classId)
+          .collection('sessions')
+          .where('start_time', isGreaterThanOrEqualTo: start)
+          .where('start_time', isLessThan: end)
+          .get();
+      for (final d in snap.docs) {
+        final s = d.data();
+        final ts = s['start_time'];
+        DateTime? startDt;
+        if (ts is Timestamp) startDt = ts.toDate();
+        if (startDt == null) continue;
+        final c = classById[classId] ?? <String, dynamic>{};
+        items.add({
+          'classId': classId,
+          'start': startDt,
+          'name': (c['name'] as String?) ?? 'Class',
+          'type': (c['type'] as String?) ?? 'Group',
+          'students': (c['enrolled_count'] as num?)?.toInt() ?? 0,
+        });
+      }
+    }
+    items.sort(
+        (a, b) => (a['start'] as DateTime).compareTo(b['start'] as DateTime));
+    return items;
+  }
+
   Widget _approvedDashboard(BuildContext context) {
+    _myClassesFuture ??= _loadMyClasses();
     return Scaffold(
       backgroundColor: AppTheme.brandSurface,
       body: SafeArea(
@@ -317,73 +360,123 @@ class _TutorDashboardPageState extends State<TutorDashboardPage> {
 
               const SizedBox(height: 12),
 
-              // Schedule List
-              ...List.generate(_todaySchedule.length, (index) {
-                final schedule = _todaySchedule[index];
-                return Container(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border(
-                      left: BorderSide(
-                        color: AppTheme.brandPrimary,
-                        width: 4,
-                      ),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: ListTile(
-                    onTap: () => context.push('/tutor/class/${schedule['id']}'),
-                    title: Text(
-                      'Class ${schedule['id']} - ${schedule['title']}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Row(
-                      children: [
-                        Icon(Icons.access_time,
-                            size: 14, color: Colors.grey[600]),
-                        const SizedBox(width: 4),
-                        Text(schedule['time']),
-                        const SizedBox(width: 12),
-                        Icon(Icons.people, size: 14, color: Colors.grey[600]),
-                        const SizedBox(width: 4),
-                        Text('${schedule['students']} students'),
-                      ],
-                    ),
-                    trailing: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _getTypeColor(schedule['type'])
-                            .withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        schedule['type'],
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: _getTypeColor(schedule['type']),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }),
+              // Schedule List (live from Firestore)
+              FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                future: _myClassesFuture,
+                builder: (context, classesSnap) {
+                  if (classesSnap.connectionState != ConnectionState.done) {
+                    return const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  final classDocs = classesSnap.data?.docs ?? [];
+                  if (classDocs.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20),
+                      child: Text('No classes yet.'),
+                    );
+                  }
+                  // Map for quick lookup
+                  final Map<String, Map<String, dynamic>> classById = {
+                    for (final d in classDocs) d.id: d.data(),
+                  };
+                  return FutureBuilder<List<Map<String, dynamic>>>(
+                    future: _fetchTodaySessions(classById),
+                    builder: (context, sessSnap) {
+                      if (sessSnap.connectionState != ConnectionState.done) {
+                        return const Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      final sessions = sessSnap.data ?? const [];
+                      if (sessions.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20),
+                          child: Text('No sessions today.'),
+                        );
+                      }
+                      return Column(
+                        children: sessions.map((item) {
+                          final classId = item['classId'] as String;
+                          final name = item['name'] as String;
+                          final type = item['type'] as String;
+                          final students = item['students'] as int;
+                          final startDt = item['start'] as DateTime;
+                          final hour =
+                              startDt.hour % 12 == 0 ? 12 : startDt.hour % 12;
+                          final minute =
+                              startDt.minute.toString().padLeft(2, '0');
+                          final ampm = startDt.hour >= 12 ? 'PM' : 'AM';
+                          final timeLabel = '$hour:$minute $ampm';
+                          return Container(
+                            margin: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: const Border(
+                                left: BorderSide(
+                                  color: AppTheme.brandPrimary,
+                                  width: 4,
+                                ),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.05),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: ListTile(
+                              onTap: () =>
+                                  context.push('/tutor/class/$classId'),
+                              title: Text(
+                                name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600),
+                              ),
+                              subtitle: Row(
+                                children: [
+                                  Icon(Icons.access_time,
+                                      size: 14, color: Colors.grey[600]),
+                                  const SizedBox(width: 4),
+                                  Text(timeLabel),
+                                  const SizedBox(width: 12),
+                                  Icon(Icons.people,
+                                      size: 14, color: Colors.grey[600]),
+                                  const SizedBox(width: 4),
+                                  Text('$students students'),
+                                ],
+                              ),
+                              trailing: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _getTypeColor(type)
+                                      .withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  type,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: _getTypeColor(type),
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      );
+                    },
+                  );
+                },
+              ),
 
               const SizedBox(height: 80),
             ],

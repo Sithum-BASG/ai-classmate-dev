@@ -30,6 +30,7 @@ class BackendConfig {
   static const String fnSendMessage = 'sendMessage';
   static const String fnGetRecommendationsRealtime =
       'getRecommendationsRealtime';
+  static const String fnCreateOrUpdateSession = 'createOrUpdateSession';
 
   // Helpers to build full HTTP URLs
   static String healthUrl({bool prod = false}) =>

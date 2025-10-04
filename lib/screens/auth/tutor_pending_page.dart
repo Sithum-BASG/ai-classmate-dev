@@ -3,36 +3,67 @@ import 'package:go_router/go_router.dart';
 import '../../theme.dart';
 
 class TutorPendingPage extends StatelessWidget {
-  const TutorPendingPage({super.key});
+  final bool isRejected;
+  const TutorPendingPage({super.key, this.isRejected = false});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Account Pending Approval')),
+      appBar: AppBar(
+        title:
+            Text(isRejected ? 'Approval Rejected' : 'Account Pending Approval'),
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.hourglass_top,
-                  size: 64, color: AppTheme.brandPrimary),
+              Icon(
+                isRejected ? Icons.cancel_outlined : Icons.hourglass_top,
+                size: 64,
+                color: isRejected ? Colors.red : AppTheme.brandPrimary,
+              ),
               const SizedBox(height: 16),
-              const Text(
-                'Your tutor account is awaiting approval.',
+              Text(
+                isRejected
+                    ? 'Your tutor application was rejected.'
+                    : 'Your tutor account is awaiting approval.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'You will be notified once an admin approves your account. You can continue exploring the app in the meantime.',
+              Text(
+                isRejected
+                    ? 'Please review your profile information and reapply for approval.'
+                    : 'You will be notified once an admin approves your account. You can continue exploring the app in the meantime.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () => context.go('/'),
-                child: const Text('Back to Home'),
-              )
+              if (isRejected) ...[
+                ElevatedButton.icon(
+                  onPressed: () => context.go('/tutor/profile/edit'),
+                  icon: const Icon(Icons.edit, size: 18),
+                  label: const Text('Edit Profile'),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () => context.go('/tutor/reapply'),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Reapply for Approval'),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => context.go('/'),
+                  child: const Text('Back to Home'),
+                ),
+              ] else ...[
+                ElevatedButton(
+                  onPressed: () => context.go('/'),
+                  child: const Text('Back to Home'),
+                ),
+              ]
             ],
           ),
         ),

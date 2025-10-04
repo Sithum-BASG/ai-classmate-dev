@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../theme.dart';
 import '../widgets/role_option_card.dart';
 
@@ -102,6 +103,29 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         );
       },
     );
+  }
+
+  Future<void> _goAdmin() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      context.go('/admin');
+      return;
+    }
+    try {
+      final token = await user.getIdTokenResult();
+      final claims = token.claims ?? {};
+      final role = claims['role'];
+      if (!mounted) return;
+      if (role == 'admin') {
+        context.go('/admin/dashboard');
+      } else {
+        context.go('/admin');
+      }
+    } catch (_) {
+      if (!mounted) return;
+      context.go('/admin');
+    }
   }
 
   @override
@@ -231,7 +255,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 child: InkWell(
                   onTap: () {
                     HapticFeedback.lightImpact();
-                    context.go('/admin');
+                    _goAdmin();
                   },
                   onLongPress: () {
                     HapticFeedback.mediumImpact();

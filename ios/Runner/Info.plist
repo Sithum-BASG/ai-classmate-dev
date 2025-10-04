@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Allow selecting an image as payment proof.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Allow taking a photo as payment proof.</string>
 </dict>
 </plist>

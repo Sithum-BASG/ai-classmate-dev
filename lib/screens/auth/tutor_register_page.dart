@@ -18,6 +18,11 @@ class _TutorRegisterPageState extends State<TutorRegisterPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _experienceController = TextEditingController();
+  final TextEditingController _qualificationsController =
+      TextEditingController();
+  final TextEditingController _aboutController = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
   String? _areaCode;
@@ -29,6 +34,10 @@ class _TutorRegisterPageState extends State<TutorRegisterPage> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
+    _phoneController.dispose();
+    _experienceController.dispose();
+    _qualificationsController.dispose();
+    _aboutController.dispose();
     super.dispose();
   }
 
@@ -38,6 +47,15 @@ class _TutorRegisterPageState extends State<TutorRegisterPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text('Please select area and subjects taught.')),
+      );
+      return;
+    }
+    if (_phoneController.text.trim().isEmpty ||
+        _experienceController.text.trim().isEmpty ||
+        _qualificationsController.text.trim().isEmpty ||
+        _aboutController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please complete all profile fields.')),
       );
       return;
     }
@@ -54,10 +72,15 @@ class _TutorRegisterPageState extends State<TutorRegisterPage> {
           .doc(cred.user!.uid)
           .set({
         'full_name': _nameController.text.trim(),
+        'email': _emailController.text.trim(),
+        'phone': _phoneController.text.trim(),
         'status': 'pending',
         'area_code': _areaCode,
         'subjects_taught': _subjectsTaught.toList(),
-        'created_at': DateTime.now().toIso8601String(),
+        'experience': _experienceController.text.trim(),
+        'qualifications': _qualificationsController.text.trim(),
+        'about': _aboutController.text.trim(),
+        'created_at': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       if (!mounted) return;
       context.go('/tutor/pending');
@@ -127,6 +150,18 @@ class _TutorRegisterPageState extends State<TutorRegisterPage> {
                     : null,
               ),
               const SizedBox(height: 20),
+              // Contact & Basic Info
+              TextFormField(
+                controller: _phoneController,
+                decoration: const InputDecoration(
+                  labelText: 'Phone Number',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                ),
+                keyboardType: TextInputType.phone,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Required' : null,
+              ),
+              const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: _areaCode,
                 items: kAreaOptions
@@ -179,6 +214,41 @@ class _TutorRegisterPageState extends State<TutorRegisterPage> {
                       }),
                     ),
                 ],
+              ),
+              const SizedBox(height: 20),
+              // Professional details
+              TextFormField(
+                controller: _experienceController,
+                decoration: const InputDecoration(
+                  labelText: 'Teaching Experience',
+                  hintText: 'e.g., 5 years',
+                  prefixIcon: Icon(Icons.work_outline),
+                ),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Required' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _qualificationsController,
+                decoration: const InputDecoration(
+                  labelText: 'Qualifications',
+                  hintText: 'e.g., BSc in...',
+                  prefixIcon: Icon(Icons.school_outlined),
+                ),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Required' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _aboutController,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'About / Bio',
+                  hintText: 'Tell students about yourself...',
+                  prefixIcon: Icon(Icons.info_outline),
+                ),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Required' : null,
               ),
               const SizedBox(height: 20),
               ElevatedButton(

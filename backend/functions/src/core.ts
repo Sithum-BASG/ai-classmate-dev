@@ -1,7 +1,7 @@
 import * as functions from 'firebase-functions';
 import { REGION } from './config';
 import { getAuth, getFirestore } from './init';
-import { isoNow, timesOverlap, addDays } from './utils';
+import { isoNow, timesOverlap, timesOverlapDate, addDays } from './utils';
 
 // publishClass: tutor/admin publishes a draft class after clash checks
 // data: { classId: string }
@@ -22,14 +22,27 @@ export const publishClass = functions
     const snap = await db.collection('classes').doc(classId).get();
     if (!snap.exists) throw new functions.https.HttpsError('not-found', 'Class not found');
     const clazz = snap.data() as any;
-    if (role !== 'admin' && !(role === 'tutor' && clazz.tutorId === uid)) {
-      throw new functions.https.HttpsError('permission-denied', 'Not allowed');
+    // Allow admins, or class owner with approved tutor profile
+    const isAdmin = role === 'admin';
+    if (!isAdmin) {
+      if (clazz.tutorId !== uid) {
+        throw new functions.https.HttpsError('permission-denied', 'Not allowed');
+      }
+      const prof = await db.collection('tutor_profiles').doc(uid).get();
+      const approved = prof.exists && (prof.data() as any)?.status === 'approved';
+      if (!approved) {
+        throw new functions.https.HttpsError('permission-denied', 'Tutor not approved');
+      }
     }
     if (clazz.status === 'published') return { ok: true, status: 'published' };
 
     // Clash check: verify no overlapping sessions for the tutor across all published classes
-    const sessionsRef = db.collectionGroup('sessions').where('classId', '==', classId);
-    const sessions = await sessionsRef.get();
+    // Read only this class' sessions directly (more robust than collectionGroup for this case)
+    const sessions = await db
+      .collection('classes')
+      .doc(classId)
+      .collection('sessions')
+      .get();
     const tutorClasses = await db
       .collection('classes')
       .where('tutorId', '==', clazz.tutorId)
@@ -43,8 +56,19 @@ export const publishClass = functions
 
     for (const s of sessions.docs) {
       const a = s.data() as any;
+      const aStartRaw = a.start_time || a.startTime;
+      const aEndRaw = a.end_time || a.endTime;
+      if (!aStartRaw || !aEndRaw) continue;
+      const aStart: Date = aStartRaw.toDate ? aStartRaw.toDate() : new Date(aStartRaw);
+      const aEnd: Date = aEndRaw.toDate ? aEndRaw.toDate() : new Date(aEndRaw);
       for (const b of otherSessions) {
-        if (a.session_date === b.session_date && timesOverlap(a.start_time || a.startTime, a.end_time || a.endTime, b.start_time || b.startTime, b.end_time || b.endTime)) {
+        const bStartRaw = (b as any).start_time || (b as any).startTime;
+        const bEndRaw = (b as any).end_time || (b as any).endTime;
+        if (!bStartRaw || !bEndRaw) continue;
+        const bStart: Date = bStartRaw.toDate ? bStartRaw.toDate() : new Date(bStartRaw);
+        const bEnd: Date = bEndRaw.toDate ? bEndRaw.toDate() : new Date(bEndRaw);
+        if (aStart.toDateString() !== bStart.toDateString()) continue;
+        if (timesOverlapDate(aStart, aEnd, bStart, bEnd)) {
           throw new functions.https.HttpsError('failed-precondition', 'Session time clash detected');
         }
       }
@@ -97,6 +121,7 @@ export const enrollInClass = functions
       trx.set(invoiceRef, {
         invoiceId: invoiceRef.id,
         enrollmentId: enrollmentRef.id,
+        studentId, // for Firestore rules read access
         amountDue: amount,
         status: 'awaiting_proof',
         dueDate: dueDate.toISOString().slice(0, 10),
@@ -148,4 +173,204 @@ export const submitPaymentProof = functions
     return { ok: true };
   });
 
+
+// unenrollFromClass: student cancels their enrollment
+// data: { enrollmentId: string }
+export const unenrollFromClass = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+    const studentId = context.auth.uid;
+    const role = (context.auth.token as any).role;
+    if (role !== 'student') throw new functions.https.HttpsError('permission-denied', 'Student role required');
+
+    const enrollmentId = data?.enrollmentId as string;
+    if (!enrollmentId) throw new functions.https.HttpsError('invalid-argument', 'enrollmentId is required');
+
+    const db = getFirestore();
+    const enrollRef = db.collection('enrollments').doc(enrollmentId);
+    const snap = await enrollRef.get();
+    if (!snap.exists) throw new functions.https.HttpsError('not-found', 'Enrollment not found');
+    const en = snap.data() as any;
+    if (en.studentId !== studentId) throw new functions.https.HttpsError('permission-denied', 'Not your enrollment');
+    if (en.status === 'cancelled') return { ok: true, status: 'cancelled' };
+
+    await enrollRef.set({ status: 'cancelled', cancelledAt: isoNow() }, { merge: true });
+    return { ok: true };
+  });
+
+// createOrUpdateSession: validates overlap and writes a session doc
+// data: { classId: string, sessionId?: string, startTime: string, endTime: string, label?: string, venue?: string }
+export const createOrUpdateSession = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+    const uid = context.auth.uid;
+    const role = (context.auth.token as any).role;
+
+    const classId = data?.classId as string;
+    const sessionId = (data?.sessionId as string) || undefined;
+    const startTimeIso = data?.startTime as string | undefined;
+    const endTimeIso = data?.endTime as string | undefined;
+    const startMs = (data?.startMs as number | undefined);
+    const endMs = (data?.endMs as number | undefined);
+    const label = (data?.label as string) || undefined;
+    const venue = (data?.venue as string) || undefined;
+
+    if (!classId || (!startTimeIso && !startMs) || (!endTimeIso && !endMs)) {
+      throw new functions.https.HttpsError('invalid-argument', 'classId and start/end time required');
+    }
+    const start = startMs !== undefined ? new Date(startMs) : new Date(startTimeIso as string);
+    const end = endMs !== undefined ? new Date(endMs) : new Date(endTimeIso as string);
+    if (!(start instanceof Date) || isNaN(start.getTime()) || !(end instanceof Date) || isNaN(end.getTime())) {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid start/end time');
+    }
+    if (end <= start) {
+      throw new functions.https.HttpsError('invalid-argument', 'End must be after start');
+    }
+
+    const db = getFirestore();
+    const classSnap = await db.collection('classes').doc(classId).get();
+    if (!classSnap.exists) throw new functions.https.HttpsError('not-found', 'Class not found');
+    const clazz = classSnap.data() as any;
+    const isAdmin = role === 'admin';
+    if (!isAdmin) {
+      if (clazz.tutorId !== uid) {
+        throw new functions.https.HttpsError('permission-denied', 'Not allowed');
+      }
+      const prof = await db.collection('tutor_profiles').doc(uid).get();
+      const approved = prof.exists && (prof.data() as any)?.status === 'approved';
+      if (!approved) {
+        throw new functions.https.HttpsError('permission-denied', 'Tutor not approved');
+      }
+    }
+
+    // Overlap check across tutor's all sessions (including drafts and this class)
+    const tutorClasses = await db.collection('classes').where('tutorId', '==', clazz.tutorId).get();
+    const sessionSnaps = await Promise.all(
+      tutorClasses.docs.map((d) => db.collection('classes').doc(d.id).collection('sessions').get())
+    );
+    const allSessions = sessionSnaps.flatMap((q, idx) => q.docs.map((d) => ({ id: d.id, ...d.data() } as any)));
+
+    for (const s of allSessions) {
+      if (sessionId && s.id === sessionId) continue; // ignore self when editing
+      const sStart = s.start_time || s.startTime;
+      const sEnd = s.end_time || s.endTime;
+      if (!sStart || !sEnd) continue;
+      const aStart = sStart.toDate ? sStart.toDate() : new Date(sStart);
+      const aEnd = sEnd.toDate ? sEnd.toDate() : new Date(sEnd);
+      if (aStart.toDateString() !== start.toDateString()) continue; // different date
+      if (timesOverlapDate(start, end, aStart, aEnd)) {
+        throw new functions.https.HttpsError('failed-precondition', 'Session time clash detected');
+      }
+    }
+
+    const payload: any = {
+      start_time: start,
+      end_time: end,
+      classId,
+    };
+    if (label) payload.label = label;
+    if (venue) payload.venue = venue;
+
+    if (sessionId) {
+      await db.collection('classes').doc(classId).collection('sessions').doc(sessionId).set(payload, { merge: true });
+      return { ok: true, sessionId };
+    }
+    const ref = await db.collection('classes').doc(classId).collection('sessions').add({
+      ...payload,
+      created_at: new Date(),
+    });
+    return { ok: true, sessionId: ref.id };
+  });
+
+
+// getOrCreateCurrentMonthInvoice: returns existing invoice for current month or creates one
+// data: { enrollmentId: string }
+export const getOrCreateCurrentMonthInvoice = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+    const studentId = context.auth.uid;
+    const role = (context.auth.token as any).role;
+    if (role !== 'student') throw new functions.https.HttpsError('permission-denied', 'Student role required');
+
+    const enrollmentId = data?.enrollmentId as string;
+    if (!enrollmentId) throw new functions.https.HttpsError('invalid-argument', 'enrollmentId is required');
+
+    const db = getFirestore();
+    const enrollSnap = await db.collection('enrollments').doc(enrollmentId).get();
+    if (!enrollSnap.exists) throw new functions.https.HttpsError('not-found', 'Enrollment not found');
+    const enrollment = enrollSnap.data() as any;
+    if (enrollment.studentId !== studentId) {
+      throw new functions.https.HttpsError('permission-denied', 'Not your enrollment');
+    }
+
+    const now = new Date();
+    const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`; // e.g., 2025-10
+    const invoiceId = `${enrollmentId}_${period}`; // deterministic ID avoids composite index
+    const invoiceRef = db.collection('invoices').doc(invoiceId);
+    const invSnap = await invoiceRef.get();
+
+    if (!invSnap.exists) {
+      const classSnap = await db.collection('classes').doc(enrollment.classId).get();
+      if (!classSnap.exists) throw new functions.https.HttpsError('not-found', 'Class not found');
+      const c = classSnap.data() as any;
+      const amount = Number(c.price ?? c.fee ?? 0);
+      const dueDate = addDays(now, 7);
+      await invoiceRef.set({
+        invoiceId,
+        enrollmentId,
+        studentId,
+        amountDue: amount,
+        status: 'awaiting_proof',
+        dueDate: dueDate.toISOString().slice(0, 10),
+        createdAt: isoNow(),
+        period
+      });
+    }
+
+    const out = await invoiceRef.get();
+    return out.data();
+  });
+
+// reviewPayment: admin approves or rejects a pending payment proof
+// data: { paymentId: string, approve: boolean, reason?: string }
+export const reviewPayment = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+    const role = (context.auth.token as any).role;
+    const reviewerId = context.auth.uid;
+    if (role !== 'admin') throw new functions.https.HttpsError('permission-denied', 'Admin role required');
+
+    const paymentId = data?.paymentId as string;
+    const approve = Boolean(data?.approve);
+    const reason = (data?.reason as string | undefined) || undefined;
+    if (!paymentId) throw new functions.https.HttpsError('invalid-argument', 'paymentId is required');
+
+    const db = getFirestore();
+    const payRef = db.collection('payments').doc(paymentId);
+    const paySnap = await payRef.get();
+    if (!paySnap.exists) throw new functions.https.HttpsError('not-found', 'Payment not found');
+    const payment = paySnap.data() as any;
+    const invoiceId = payment.invoiceId as string | undefined;
+    if (!invoiceId) throw new functions.https.HttpsError('failed-precondition', 'Payment missing invoiceId');
+
+    const invRef = db.collection('invoices').doc(invoiceId);
+    const invSnap = await invRef.get();
+    if (!invSnap.exists) throw new functions.https.HttpsError('not-found', 'Invoice not found');
+
+    const updates: any = {
+      verifyStatus: approve ? 'approved' : 'rejected',
+      reviewedBy: reviewerId,
+      reviewedAt: isoNow()
+    };
+    if (!approve && reason) updates.rejectionReason = reason;
+
+    await payRef.set(updates, { merge: true });
+    await invRef.set({ status: approve ? 'approved' : 'rejected', reviewedBy: reviewerId, reviewedAt: isoNow() }, { merge: true });
+
+    return { ok: true, status: updates.verifyStatus };
+  });
 
