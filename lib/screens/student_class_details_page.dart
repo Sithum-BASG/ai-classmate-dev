@@ -48,6 +48,7 @@ class StudentClassDetailsPage extends StatelessWidget {
           final grade = (c['grade'] as num?)?.toInt();
           final price = (c['price'] as num?)?.toInt() ?? 0;
           final desc = (c['description'] as String?) ?? '';
+          final tutorId = (c['tutorId'] as String?) ?? '';
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -88,6 +89,30 @@ class StudentClassDetailsPage extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 12),
+                      if (tutorId.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            const Icon(Icons.person,
+                                size: 16, color: Colors.grey),
+                            const SizedBox(width: 6),
+                            FutureBuilder<
+                                DocumentSnapshot<Map<String, dynamic>>>(
+                              future: FirebaseFirestore.instance
+                                  .collection('tutor_profiles')
+                                  .doc(tutorId)
+                                  .get(),
+                              builder: (context, tSnap) {
+                                final t =
+                                    tSnap.data?.data() ?? <String, dynamic>{};
+                                final tutorName =
+                                    (t['full_name'] as String?) ?? 'Tutor';
+                                return Text('Tutor: $tutorName');
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       Row(
                         children: [
                           const Icon(Icons.place, size: 16, color: Colors.grey),
@@ -170,22 +195,16 @@ class StudentClassDetailsPage extends StatelessWidget {
       final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
           .httpsCallable('enrollInClass');
       await callable.call({'classId': classId});
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enrolled successfully')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enrolled successfully')),
+      );
     } on FirebaseFunctionsException catch (e) {
-      if (context.mounted) {
-        final msg = '[${e.code}] ${e.message ?? e.details ?? e.toString()}';
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed to enroll: $msg')));
-      }
+      final msg = '[${e.code}] ${e.message ?? e.details ?? e.toString()}';
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to enroll: $msg')));
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed to enroll: $e')));
-      }
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to enroll: $e')));
     }
   }
 

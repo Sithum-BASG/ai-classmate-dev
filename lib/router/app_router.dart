@@ -19,6 +19,8 @@ import '../screens/auth/tutor_pending_page.dart';
 import '../screens/Admin/admin_dashboard_page.dart';
 import '../screens/Admin/admin_login_page.dart';
 
+import '../screens/student_announcements_page.dart';
+
 // Tutor screens
 import '../screens/tutor/tutor_dashboard_page.dart';
 import '../screens/tutor/tutor_classes_page.dart';
@@ -117,6 +119,11 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/profile',
       builder: (context, state) => const ProfilePage(),
+    ),
+    // Student view of announcements
+    GoRoute(
+      path: '/announcements',
+      builder: (context, state) => const StudentAnnouncementsPage(),
     ),
     GoRoute(
       path: '/chatbot',

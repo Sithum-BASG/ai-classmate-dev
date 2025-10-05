@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:go_router/go_router.dart';
 import '../theme.dart';
 
@@ -40,6 +41,150 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
       'borderColor': const Color(0xFF2563EB),
     },
   ];
+
+  Future<List<Map<String, dynamic>>> _fetchTopRecommendedClasses() async {
+    try {
+      await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('getRecommendationsRealtime');
+      final res = await callable.call({'limit': 2, 'debug': false});
+      final data = (res.data as Map?)?.cast<String, dynamic>() ?? {};
+      final results = ((data['results'] as List?) ?? [])
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .toList();
+      // Fetch classes for each result
+      final out = <Map<String, dynamic>>[];
+      for (final r in results) {
+        final classId = (r['classId'] ?? r['class_id'])?.toString();
+        final score = (r['score'] as num?)?.toDouble() ?? 0.0;
+        if (classId == null || classId.isEmpty) continue;
+        final snap = await FirebaseFirestore.instance
+            .collection('classes')
+            .doc(classId)
+            .get();
+        if (!snap.exists) continue;
+        final c = snap.data() ?? <String, dynamic>{};
+        out.add({'classId': classId, 'score': score, 'class': c});
+      }
+      out.sort(
+          (a, b) => (b['score'] as double).compareTo(a['score'] as double));
+      return out;
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Widget _buildRecClassCard(Map<String, dynamic> item) {
+    final c = (item['class'] as Map<String, dynamic>);
+    final classId = item['classId'] as String;
+    final name = (c['name'] as String?) ?? 'Class';
+    final mode = (c['mode'] as String?) ?? 'In-person';
+    final type = (c['type'] as String?) ?? 'Group';
+    final grade = (c['grade'] as num?)?.toInt();
+    final price = (c['price'] as num?)?.toInt() ?? 0;
+    final tutorId = (c['tutorId'] as String?) ?? '';
+    final score = (item['score'] as num).toDouble();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => context.go('/class/$classId'),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (tutorId.isNotEmpty)
+                          FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                            future: FirebaseFirestore.instance
+                                .collection('tutor_profiles')
+                                .doc(tutorId)
+                                .get(),
+                            builder: (context, tSnap) {
+                              final t =
+                                  tSnap.data?.data() ?? <String, dynamic>{};
+                              final tn = (t['full_name'] as String?) ?? 'Tutor';
+                              return Text('Tutor: $tn',
+                                  style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.brandPrimary));
+                            },
+                          ),
+                        const SizedBox(height: 2),
+                        Text(name,
+                            style: const TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 4),
+                        Text('$type · $mode',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey[600])),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (grade != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text('Grade $grade',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.blue)),
+                        ),
+                      const SizedBox(height: 6),
+                      Text('LKR $price',
+                          style: const TextStyle(
+                              color: AppTheme.brandPrimary,
+                              fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.purple.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text('Score ${score.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.purple)),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   void _onBottomNavTap(int index) {
     setState(() => _selectedIndex = index);
@@ -112,6 +257,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                 builder: (context, clsSnap) {
                   final cd = clsSnap.data?.data() ?? <String, dynamic>{};
                   final name = (cd['name'] as String?) ?? 'Class';
+                  final tutorId = (cd['tutorId'] as String?) ?? '';
                   final mode = (cd['mode'] as String?) ?? 'In-person';
                   final type = (cd['type'] as String?) ?? 'Group';
                   final grade = (cd['grade'] as num?)?.toInt();
@@ -146,10 +292,35 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
+                                      if (tutorId.isNotEmpty)
+                                        FutureBuilder<
+                                            DocumentSnapshot<
+                                                Map<String, dynamic>>>(
+                                          future: FirebaseFirestore.instance
+                                              .collection('tutor_profiles')
+                                              .doc(tutorId)
+                                              .get(),
+                                          builder: (context, tSnap) {
+                                            final t = tSnap.data?.data() ??
+                                                <String, dynamic>{};
+                                            final tn =
+                                                (t['full_name'] as String?) ??
+                                                    'Tutor';
+                                            return Text(
+                                              'Tutor: $tn',
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w700,
+                                                color: AppTheme.brandPrimary,
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      const SizedBox(height: 2),
                                       Text(
                                         name,
                                         style: const TextStyle(
-                                          fontSize: 16,
+                                          fontSize: 14,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -286,66 +457,43 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                             ),
                           ],
                         ),
-                        Stack(
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                color: AppTheme.brandSurface,
-                                shape: BoxShape.circle,
-                              ),
-                              child: IconButton(
-                                icon: const Icon(Icons.notifications_outlined),
-                                onPressed: () {
-                                  // TODO: Navigate to notifications
-                                },
-                                color: AppTheme.brandText,
-                              ),
-                            ),
-                            Positioned(
-                              right: 10,
-                              top: 10,
-                              child: Container(
-                                width: 10,
-                                height: 10,
-                                decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 2,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppTheme.brandSurface,
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: const Icon(Icons.notifications_outlined),
+                            onPressed: () => context.go('/announcements'),
+                            color: AppTheme.brandText,
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 20),
-                    // Search Bar
-                    Container(
-                      decoration: BoxDecoration(
-                        color: AppTheme.brandSurface,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: TextField(
-                        controller: _searchController,
-                        decoration: InputDecoration(
-                          hintText: 'Search subjects, tutors...',
-                          hintStyle: TextStyle(color: Colors.grey[400]),
-                          prefixIcon:
-                              Icon(Icons.search, color: Colors.grey[400]),
-                          suffixIcon: IconButton(
-                            icon: Icon(Icons.tune, color: Colors.grey[600]),
-                            onPressed: () {
-                              // TODO: Open filter bottom sheet
-                            },
-                          ),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
+                    // Search Bar (navigates to /search)
+                    GestureDetector(
+                      onTap: () => context.go('/search'),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppTheme.brandSurface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppTheme.subtleBorder),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 12),
+                        child: Row(
+                          children: [
+                            Icon(Icons.search, color: Colors.grey[500]),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Search subjects, tutors...',
+                                style: TextStyle(color: Colors.grey[500]),
+                              ),
+                            ),
+                            Icon(Icons.tune, color: Colors.grey[500]),
+                          ],
                         ),
                       ),
                     ),
@@ -373,7 +521,7 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                           ),
                         ),
                         TextButton(
-                          onPressed: () {},
+                          onPressed: () => context.go('/search'),
                           child: const Text(
                             'See All',
                             style: TextStyle(color: AppTheme.brandPrimary),
@@ -382,99 +530,40 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    ...List.generate(_aiRecommendations.length, (index) {
-                      final recommendation = _aiRecommendations[index];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: recommendation['color'],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border(
-                            left: BorderSide(
-                              color: recommendation['borderColor'],
-                              width: 4,
-                            ),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  recommendation['icon'],
-                                  size: 20,
-                                  color: recommendation['borderColor'],
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    recommendation['title'],
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                ),
-                                if (recommendation['priority'] != null)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
+                    FutureBuilder<List<Map<String, dynamic>>>(
+                      future: _fetchTopRecommendedClasses(),
+                      builder: (context, recSnap) {
+                        final items =
+                            recSnap.data ?? const <Map<String, dynamic>>[];
+                        if (recSnap.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                              child: CircularProgressIndicator());
+                        }
+                        if (items.isEmpty) {
+                          return const Text('No recommendations yet.');
+                        }
+                        return Column(
+                          children: items
+                              .map((it) => Container(
                                     decoration: BoxDecoration(
-                                      color: recommendation['borderColor'],
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      recommendation['priority'],
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          AppTheme.brandPrimary
+                                              .withValues(alpha: 0.06),
+                                          Colors.white,
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
                                       ),
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              recommendation['description'],
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey[700],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              height: 32,
-                              child: OutlinedButton(
-                                onPressed: () {
-                                  // TODO: Handle button press
-                                },
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor:
-                                      recommendation['borderColor'],
-                                  side: BorderSide(
-                                    color: recommendation['borderColor'],
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                  ),
-                                ),
-                                child: Text(
-                                  recommendation['type'] == 'schedule'
-                                      ? 'View Schedule'
-                                      : 'View Profile',
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
+                                    child: _buildRecClassCard(it),
+                                  ))
+                              .toList(),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
