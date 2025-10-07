@@ -448,13 +448,6 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              'Continue your Physics class with Mr. Kamal?',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[600],
-                              ),
-                            ),
                           ],
                         ),
                         Container(

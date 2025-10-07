@@ -1,6 +1,7 @@
 import * as functions from 'firebase-functions';
 import { REGION } from './config';
 import { getAuth, getFirestore } from './init';
+import { FieldValue } from 'firebase-admin/firestore';
 import { isoNow, timesOverlap, timesOverlapDate, addDays } from './utils';
 
 // publishClass: tutor/admin publishes a draft class after clash checks
@@ -107,13 +108,23 @@ export const enrollInClass = functions
       }
 
       const enrollmentRef = db.collection('enrollments').doc();
+      // Fetch student profile for name/grade snapshot at enrollment time
+      const profSnap = await trx.get(db.collection('student_profiles').doc(studentId));
+      const prof = profSnap.exists ? (profSnap.data() as any) : undefined;
       trx.set(enrollmentRef, {
         enrollmentId: enrollmentRef.id,
         classId,
         studentId,
         status: 'active',
-        enrolledAt: isoNow()
+        enrolledAt: isoNow(),
+        studentName: prof?.full_name || null,
+        studentGrade: prof?.grade || null,
       });
+
+      // Grant tutor read access to this student's profile via authorizedTutors map
+      const authUpdate: any = {};
+      authUpdate[`authorizedTutors.${c.tutorId}`] = true;
+      trx.set(db.collection('student_profiles').doc(studentId), authUpdate, { merge: true });
 
       const amount = Number(c.fee || 0);
       const dueDate = addDays(new Date(), 7);
@@ -196,6 +207,21 @@ export const unenrollFromClass = functions
     if (en.status === 'cancelled') return { ok: true, status: 'cancelled' };
 
     await enrollRef.set({ status: 'cancelled', cancelledAt: isoNow() }, { merge: true });
+
+    // Revoke tutor's read access for this student (best-effort)
+    try {
+      const db = getFirestore();
+      const enrollment = (await enrollRef.get()).data() as any;
+      const classSnap = await db.collection('classes').doc(enrollment.classId).get();
+      const tutorId = (classSnap.data() as any)?.tutorId as string | undefined;
+      if (tutorId) {
+        const delUpdate: any = {};
+        delUpdate[`authorizedTutors.${tutorId}`] = FieldValue.delete();
+        await db.collection('student_profiles').doc(studentId).set(delUpdate, { merge: true });
+      }
+    } catch (_) {
+      // ignore
+    }
     return { ok: true };
   });
 
@@ -372,5 +398,50 @@ export const reviewPayment = functions
     await invRef.set({ status: approve ? 'approved' : 'rejected', reviewedBy: reviewerId, reviewedAt: isoNow() }, { merge: true });
 
     return { ok: true, status: updates.verifyStatus };
+  });
+
+
+// getEnrollmentPaymentStatus: returns invoice status for an enrollment to tutors/admins
+// data: { enrollmentId: string }
+export const getEnrollmentPaymentStatus = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+    const uid = context.auth.uid;
+    const role = (context.auth.token as any).role;
+    const enrollmentId = data?.enrollmentId as string;
+    if (!enrollmentId) throw new functions.https.HttpsError('invalid-argument', 'enrollmentId is required');
+
+    const db = getFirestore();
+    const enrSnap = await db.collection('enrollments').doc(enrollmentId).get();
+    if (!enrSnap.exists) throw new functions.https.HttpsError('not-found', 'Enrollment not found');
+    const enr = enrSnap.data() as any;
+    const classSnap = await db.collection('classes').doc(enr.classId).get();
+    if (!classSnap.exists) throw new functions.https.HttpsError('not-found', 'Class not found');
+    const clazz = classSnap.data() as any;
+    const isAdmin = role === 'admin';
+    if (!isAdmin && clazz.tutorId !== uid) {
+      throw new functions.https.HttpsError('permission-denied', 'Not allowed');
+    }
+
+    const invSnap = await db
+      .collection('invoices')
+      .where('enrollmentId', '==', enrollmentId)
+      .get();
+    if (invSnap.empty) return { status: 'awaiting_proof' };
+    let resolved: 'approved' | 'under_review' | 'rejected' | 'awaiting_proof' = 'awaiting_proof';
+    let hasUnderReview = false;
+    let hasRejected = false;
+    for (const d of invSnap.docs) {
+      const s = (d.data() as any).status as string | undefined;
+      if (s === 'approved') { resolved = 'approved'; break; }
+      if (s === 'under_review') hasUnderReview = true;
+      if (s === 'rejected') hasRejected = true;
+    }
+    if (resolved !== 'approved') {
+      if (hasUnderReview) resolved = 'under_review';
+      else if (hasRejected) resolved = 'rejected';
+    }
+    return { status: resolved };
   });
 

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../theme.dart';
+import '../../services/functions_service.dart';
 
 class TutorMessagesPage extends StatefulWidget {
   const TutorMessagesPage({super.key});
@@ -12,52 +15,80 @@ class TutorMessagesPage extends StatefulWidget {
 class _TutorMessagesPageState extends State<TutorMessagesPage> {
   int _selectedIndex = 2;
 
-  final List<Map<String, dynamic>> _classMessages = [
-    {
-      'classId': '8',
-      'className': 'Physics A/L',
-      'type': 'Group',
-      'students': 12,
-      'lastMessage':
-          'Remember to complete the homework exercises before next class.',
-      'time': 'Sent 2 hours ago',
-    },
-    {
-      'classId': '9',
-      'className': 'Mathematics A/L',
-      'type': 'Individual',
-      'students': 1,
-      'lastMessage':
-          'Remember to complete the homework exercises before next class.',
-      'time': 'Sent 2 hours ago',
-    },
-    {
-      'classId': '10',
-      'className': 'Chemistry A/L',
-      'type': 'Group',
-      'students': 5,
-      'lastMessage':
-          'Remember to complete the homework exercises before next class.',
-      'time': 'Sent 2 hours ago',
-    },
-  ];
+  Stream<List<Map<String, dynamic>>> _classMessagesStream() async* {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      yield const [];
+      return;
+    }
+    try {
+      final classesSnap = await FirebaseFirestore.instance
+          .collection('classes')
+          .where('tutorId', isEqualTo: uid)
+          .get();
+      final mapById = {for (final d in classesSnap.docs) d.id: d.data()};
+      final classIds = mapById.keys.toList();
+      final out = <Map<String, dynamic>>[];
+      for (final classId in classIds) {
+        final ann = await FirebaseFirestore.instance
+            .collection('classes')
+            .doc(classId)
+            .collection('announcements')
+            .orderBy('created_at', descending: true)
+            .limit(1)
+            .get();
+        final cdata = mapById[classId] ?? <String, dynamic>{};
+        out.add({
+          'classId': classId,
+          'className': (cdata['name'] as String?) ?? 'Class',
+          'type': (cdata['type'] as String?) ?? 'Group',
+          'students': (cdata['enrolled_count'] as num?)?.toInt() ?? 0,
+          'lastMessage': ann.docs.isNotEmpty
+              ? ((ann.docs.first.data()['message'] as String?) ?? '')
+              : '',
+          'time': ann.docs.isNotEmpty
+              ? ((ann.docs.first.data()['created_at'] as String?) ?? '')
+              : '',
+        });
+      }
+      yield out;
+    } catch (e) {
+      // swallow stream error to avoid framework exception pause
+      yield const [];
+    }
+  }
 
-  final List<Map<String, dynamic>> _individualMessages = [
-    {
-      'studentId': '1',
-      'studentName': 'John Silva',
-      'lastMessage': 'Thank you for the extra notes!',
-      'time': '1 hour ago',
-      'unread': false,
-    },
-    {
-      'studentId': '2',
-      'studentName': 'Sarah Fernando',
-      'lastMessage': 'Can we reschedule tomorrow\'s session?',
-      'time': '3 hours ago',
-      'unread': true,
-    },
-  ];
+  Stream<List<Map<String, dynamic>>> _individualThreadsStream() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      return Stream<List<Map<String, dynamic>>>.value(const []);
+    }
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('messages')
+        .orderBy('sentAt', descending: true)
+        .snapshots()
+        .map((snap) {
+      final byPeer = <String, List<Map<String, dynamic>>>{};
+      for (final d in snap.docs) {
+        final m = d.data();
+        final pid = (m['peerId'] as String?) ?? (m['from'] as String?) ?? '';
+        if (pid.isEmpty) continue;
+        byPeer.putIfAbsent(pid, () => []).add(m);
+      }
+      final threads = byPeer.entries.map((e) {
+        final last = e.value.first;
+        return {
+          'peerId': e.key,
+          'lastText': (last['text'] as String?) ?? '',
+          'sentAt': (last['sentAt'] as String?) ?? '',
+          'hasUnread': e.value.any((x) => !(x['read'] as bool? ?? false)),
+        };
+      }).toList();
+      return threads;
+    });
+  }
 
   void _onBottomNavTap(int index) {
     setState(() => _selectedIndex = index);
@@ -110,169 +141,198 @@ class _TutorMessagesPageState extends State<TutorMessagesPage> {
         body: TabBarView(
           children: [
             // Class Messages Tab
-            ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _classMessages.length,
-              itemBuilder: (context, index) {
-                final message = _classMessages[index];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _classMessagesStream(),
+              builder: (context, snap) {
+                if (snap.hasError) {
+                  return const Center(
+                      child: Text('Failed to load class messages'));
+                }
+                final items = snap.data ?? const [];
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final message = items[index];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.all(16),
-                    title: Row(
-                      children: [
-                        Text(
-                          'Class ${message['classId']} - ${message['className']}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _getTypeColor(message['type'])
-                                .withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            message['type'],
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: _getTypeColor(message['type']),
-                              fontWeight: FontWeight.w600,
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.all(16),
+                        title: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                (message['className'] as String?) ?? 'Class',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _getTypeColor(
+                                        (message['type'] as String?) ?? 'Group')
+                                    .withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                (message['type'] as String?) ?? 'Group',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: _getTypeColor(
+                                      (message['type'] as String?) ?? 'Group'),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 4),
-                        Text(
-                          '${message['students']} students',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 4),
+                            Text(
+                              '${message['students']} students',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              (message['lastMessage'] as String?) ?? '',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              (message['time'] as String?) ?? '',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          message['lastMessage'],
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.send),
+                          onPressed: () => _composeClassMessage(message),
+                          color: AppTheme.brandPrimary,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          message['time'],
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[500],
-                          ),
-                        ),
-                      ],
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.send),
-                      onPressed: () => _composeClassMessage(message),
-                      color: AppTheme.brandPrimary,
-                    ),
-                    onTap: () => _viewClassMessages(message),
-                  ),
+                        onTap: () => _viewClassMessages(message),
+                      ),
+                    );
+                  },
                 );
               },
             ),
 
             // Individual Messages Tab
-            ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _individualMessages.length,
-              itemBuilder: (context, index) {
-                final message = _individualMessages[index];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _individualThreadsStream(),
+              builder: (context, snap) {
+                if (snap.hasError) {
+                  return const Center(
+                      child: Text('Failed to load conversations'));
+                }
+                final threads = snap.data ?? const [];
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: threads.length,
+                  itemBuilder: (context, index) {
+                    final message = threads[index];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.all(16),
-                    leading: CircleAvatar(
-                      backgroundColor:
-                          AppTheme.brandPrimary.withValues(alpha: 0.1),
-                      child: Text(
-                        message['studentName']
-                            .split(' ')
-                            .map((e) => e[0])
-                            .take(2)
-                            .join(),
-                        style: const TextStyle(
-                          color: AppTheme.brandPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    title: Text(
-                      message['studentName'],
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 4),
-                        Text(
-                          message['lastMessage'],
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          message['time'],
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[500],
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.all(16),
+                        leading: CircleAvatar(
+                          backgroundColor:
+                              AppTheme.brandPrimary.withValues(alpha: 0.1),
+                          child: Text(
+                            () {
+                              final pid = (message['peerId'] as String?) ?? '';
+                              if (pid.isEmpty) return 'ST';
+                              return (pid.length >= 2
+                                      ? pid.substring(0, 2)
+                                      : pid.substring(0, 1))
+                                  .toUpperCase();
+                            }(),
+                            style: const TextStyle(
+                              color: AppTheme.brandPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
-                      ],
-                    ),
-                    trailing: message['unread']
-                        ? Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: AppTheme.brandPrimary,
-                              shape: BoxShape.circle,
+                        title: Text(
+                          (message['peerId'] as String?) ?? 'Student',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 4),
+                            Text(
+                              (message['lastText'] as String?) ?? '',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 13),
                             ),
-                          )
-                        : null,
-                    onTap: () => _openIndividualChat(message),
-                  ),
+                            const SizedBox(height: 4),
+                            Text(
+                              message['sentAt'] as String? ?? '',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                          ],
+                        ),
+                        trailing: (message['hasUnread'] as bool? ?? false)
+                            ? Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: AppTheme.brandPrimary,
+                                  shape: BoxShape.circle,
+                                ),
+                              )
+                            : null,
+                        onTap: () => _openIndividualChat(message),
+                      ),
+                    );
+                  },
                 );
               },
             ),
@@ -445,13 +505,56 @@ class _TutorMessagesPageState extends State<TutorMessagesPage> {
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton.icon(
-                      onPressed: () {
-                        // TODO: Send message
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Message sent to class')),
-                        );
+                      onPressed: () async {
+                        final text = messageController.text.trim();
+                        if (text.isEmpty) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Message is empty')),
+                          );
+                          return;
+                        }
+                        try {
+                          // send to all students of this class
+                          final classId = classInfo['classId'] as String;
+                          final enrSnap = await FirebaseFirestore.instance
+                              .collection('enrollments')
+                              .where('classId', isEqualTo: classId)
+                              .where('status',
+                                  whereIn: ['active', 'pending']).get();
+                          final fn = FunctionsService();
+                          for (final d in enrSnap.docs) {
+                            final sid = (d.data()['studentId'] as String?);
+                            if (sid != null && sid.isNotEmpty) {
+                              await fn.sendMessageToUser(
+                                  toUserId: sid, text: text);
+                            }
+                          }
+                          await FirebaseFirestore.instance
+                              .collection('classes')
+                              .doc(classId)
+                              .collection('announcements')
+                              .add({
+                            'title': 'Class Message',
+                            'message': text,
+                            'created_at': DateTime.now().toIso8601String(),
+                            'status': 'sent'
+                          });
+                          if (mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Message sent to class')),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed: $e')),
+                            );
+                          }
+                        }
                       },
                       icon: const Icon(Icons.send, size: 18),
                       label: const Text('Send'),
@@ -471,10 +574,58 @@ class _TutorMessagesPageState extends State<TutorMessagesPage> {
   }
 
   void _viewClassMessages(Map<String, dynamic> classInfo) {
-    // TODO: Navigate to class messages history
+    final classId = classInfo['classId'] as String?;
+    if (classId == null || classId.isEmpty) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.6,
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            const Text('Class Message History',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection('classes')
+                    .doc(classId)
+                    .collection('announcements')
+                    .orderBy('created_at', descending: true)
+                    .snapshots(),
+                builder: (context, snap) {
+                  final docs = snap.data?.docs ?? [];
+                  if (docs.isEmpty) {
+                    return const Center(child: Text('No messages yet'));
+                  }
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: docs.length,
+                    itemBuilder: (context, index) {
+                      final a = docs[index].data();
+                      return ListTile(
+                        title: Text((a['message'] as String?) ?? ''),
+                        subtitle: Text((a['created_at'] as String?) ?? ''),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _openIndividualChat(Map<String, dynamic> message) {
-    // TODO: Navigate to individual chat
+    final peerId = message['peerId'] as String?;
+    if (peerId == null || peerId.isEmpty) return;
+    context.push('/chat/$peerId');
   }
 }

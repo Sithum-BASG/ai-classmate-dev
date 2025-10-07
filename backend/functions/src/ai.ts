@@ -2,6 +2,144 @@ import * as functions from 'firebase-functions';
 import { REGION, DATA_PLATFORM } from './config';
 import { getFirestore } from './init';
 
+async function getAccessToken(): Promise<string> {
+  const { GoogleAuth } = await import('google-auth-library');
+  const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
+  const client = await auth.getClient();
+  const token = await client.getAccessToken();
+  if (!token || !token.token) throw new Error('Failed to get access token');
+  return token.token;
+}
+
+export const chatbotReply = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    try {
+      if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Login required');
+      }
+      const prompt = (data?.prompt as string | undefined)?.trim() || '';
+      const debug = Boolean(data?.debug);
+      if (!prompt) {
+        throw new functions.https.HttpsError('invalid-argument', 'prompt is required');
+      }
+
+      const system = `You are AI ClassMate Assistant for a Flutter app using go_router.
+Speak with short, step-by-step guidance that matches these exact screens/terms:
+- Enroll flow: Search (/search) → open class (/class/:id) → Enroll (creates invoice) → Upload payment proof in Enrollment details (/enrollment/:id). Invoice statuses: awaiting_proof, under_review, approved, rejected.
+- See invoices/payment: open Enrollment details (/enrollment/:id). Do not claim to take payments.
+- Messages: Student chats are in /messages; tutor messages: quick message icon or class messages. Suggest opening /messages for replies.
+- Announcements: /announcements shows global announcements to students.
+- Classes: Published classes are visible; Available seats filter hides full classes; students don’t see classes they’re already enrolled in.
+Rules:
+- Be concise and actionable with numbered steps.
+- Use exact route labels above; don’t invent routes.
+- Never invent Firestore data or internal states; point to the correct screen to check.
+- If unsure, say what screen to use rather than guessing.`;
+
+      // Optional grounding from Firestore (ai_guidance/app.snippets)
+      let guidanceExtra = '';
+      try {
+        const db = getFirestore();
+        const g = await db.collection('ai_guidance').doc('app').get();
+        const snippets = (g.exists ? ((g.data() as any)?.snippets as string | undefined) : undefined) || '';
+        if (snippets && typeof snippets === 'string') guidanceExtra = `\n\nApp notes:\n${snippets}`;
+      } catch (_) {
+        // ignore and use default system only
+      }
+
+      const genRegion = process.env.GENAI_REGION || 'us-central1';
+      const token = await getAccessToken();
+      const body = {
+        contents: [
+          { role: 'user', parts: [{ text: prompt }] }
+        ],
+        systemInstruction: { role: 'system', parts: [{ text: system + guidanceExtra }] },
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 512,
+        }
+      } as any;
+
+      // Simple rate limit: min 2s between calls per user
+      try {
+        const db = getFirestore();
+        const uref = db.collection('ai_usage').doc(context.auth.uid);
+        const u = await uref.get();
+        const now = Date.now();
+        const last = (u.exists ? Number((u.data() as any)?.lastMs) : 0) || 0;
+        if (now - last < 2000) {
+          return { error: 'Too many requests. Please wait a moment and try again.' };
+        }
+        await uref.set({ lastMs: now }, { merge: true });
+      } catch (_) { /* ignore */ }
+
+      const preferred = (process.env.GENAI_MODEL || '').trim();
+      const candidatesModels = [
+        ...(preferred ? [preferred] : []),
+        'gemini-2.5-flash',
+        'gemini-2.0-flash-001'
+      ];
+
+      let last404 = '';
+      for (const model of candidatesModels) {
+        const url = `https://${genRegion}-aiplatform.googleapis.com/v1/projects/${DATA_PLATFORM.dataProjectId}/locations/${genRegion}/publishers/google/models/${model}:generateContent`;
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(body),
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          if (resp.status === 404) {
+            last404 = model;
+            console.warn('chatbotReply model_not_found', { model, region: genRegion });
+            continue;
+          }
+          const errMsg = `Vertex error: ${resp.status} ${text}`;
+          console.error('chatbotReply vertex_error', { project: DATA_PLATFORM.dataProjectId, err: errMsg, model });
+          return { error: errMsg };
+        }
+        const dataJson: any = await resp.json();
+        const cands = dataJson?.candidates || [];
+        const first = cands[0];
+        const content = first?.content?.parts?.map((p: any) => p.text).join('\n') || 'Sorry, I could not respond.';
+        // Heuristic hints to open relevant routes
+        const lc = prompt.toLowerCase();
+        const hints: Array<{ label: string; route: string }> = [];
+        if (lc.includes('enroll') || lc.includes('join') || lc.includes('class')) hints.push({ label: 'Browse classes', route: '/search' });
+        if (lc.includes('invoice') || lc.includes('payment')) hints.push({ label: 'Open messages', route: '/messages' });
+        hints.push({ label: 'Announcements', route: '/announcements' });
+
+        // Fire-and-forget analytics
+        try {
+          const db = getFirestore();
+          await db.collection('ai_logs').add({
+            uid: context.auth.uid,
+            ts: new Date().toISOString(),
+            promptLen: prompt.length,
+            replyLen: content.length,
+            model,
+          });
+        } catch (_) { /* ignore */ }
+
+        return debug ? { reply: content, raw: dataJson, model, hints } : { reply: content, model, hints };
+      }
+
+      const errMsg = `No accessible Gemini model in ${genRegion}. Tried: ${candidatesModels.join(', ')}. Last 404 on: ${last404}`;
+      console.error('chatbotReply models_exhausted', errMsg);
+      return { error: errMsg };
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      console.error('chatbotReply_error', msg);
+      // Return error payload instead of throwing, so client can show friendly message
+      return { error: msg };
+    }
+  });
+
 // Use BigQuery REST via @google-cloud/bigquery only in production; for emulator, skip requiring GOOGLE_APPLICATION_CREDENTIALS.
 // We'll lazy import to avoid bundling issues in emulator.
 async function getBigQuery() {

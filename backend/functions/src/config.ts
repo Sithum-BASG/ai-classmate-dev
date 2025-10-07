@@ -5,8 +5,10 @@ export interface DataPlatformConfig {
   bigQueryDataset: string;
 }
 
+const defaultProject = process.env.DATA_PROJECT || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'ai-classmate-dev';
+
 export const DATA_PLATFORM: DataPlatformConfig = {
-  dataProjectId: process.env.DATA_PROJECT || 'ai-classmate-sri-lanka-001',
+  dataProjectId: defaultProject,
   bigQueryDataset: process.env.BQ_DATASET || 'ai_classmate'
 };
 

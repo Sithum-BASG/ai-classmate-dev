@@ -6,6 +6,7 @@ import '../screens/home_page.dart';
 import '../screens/student_dashboard_page.dart';
 import '../screens/search_page.dart';
 import '../screens/messages_page.dart';
+import '../screens/chat_detail_page.dart';
 import '../screens/profile_page.dart';
 import '../widgets/chatbot_fab.dart';
 import '../screens/auth/student_auth_welcome_page.dart';
@@ -115,6 +116,13 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/messages',
       builder: (context, state) => const MessagesPage(),
+    ),
+    GoRoute(
+      path: '/chat/:peerId',
+      builder: (context, state) {
+        final peerId = state.pathParameters['peerId'] ?? '';
+        return ChatDetailPage(peerId: peerId);
+      },
     ),
     GoRoute(
       path: '/profile',

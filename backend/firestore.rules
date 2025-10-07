@@ -20,6 +20,9 @@ service cloud.firestore {
     function classIsPublished(classId) {
       return getClass(classId).data.status == 'published';
     }
+    function getEnrollment(enrollmentId) {
+      return get(/databases/$(db)/documents/enrollments/$(enrollmentId));
+    }
 
     // USERS: users/{userId}
     match /users/{userId} {
@@ -35,7 +38,9 @@ service cloud.firestore {
 
     // STUDENT PROFILE: student_profiles/{userId}
     match /student_profiles/{userId} {
-      allow read: if isAdmin() || isSelf(userId);
+      allow read: if isAdmin()
+                  || isSelf(userId)
+                  || (isTutor() && (resource.data.authorizedTutors[uid()] == true));
       allow create, update: if isAdmin() || isSelf(userId);
       allow delete: if isAdmin();
     }
@@ -115,7 +120,7 @@ service cloud.firestore {
     match /enrollments/{enrollmentId} {
       allow read: if isAdmin()
                   || (signedIn() && resource.data.studentId == uid())
-                  || (isTutor() && getClass(resource.data.classId).data.tutorId == uid());
+                  || (signedIn() && getClass(resource.data.classId).data.tutorId == uid());
       // Clients should not create/confirm enrollments directly (use Cloud Functions)
       allow create, update, delete: if false;
     }
@@ -123,7 +128,12 @@ service cloud.firestore {
     // INVOICES: invoices/{invoiceId}
     match /invoices/{invoiceId} {
       allow read: if isAdmin()
-                  || (signedIn() && resource.data.studentId == uid());
+                  || (signedIn() && resource.data.studentId == uid())
+                  || (
+                    isTutor() &&
+                    getEnrollment(resource.data.enrollmentId).exists() &&
+                    getClass(getEnrollment(resource.data.enrollmentId).data.classId).data.tutorId == uid()
+                  );
       allow create, update, delete: if false; // Managed by Functions
     }
 

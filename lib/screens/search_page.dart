@@ -25,6 +25,7 @@ class _SearchPageState extends State<SearchPage> {
   Map<String, num> _recScores = const {};
   String? _lastDocsKey;
   List<QueryDocumentSnapshot<Map<String, dynamic>>>? _lastSorted;
+  bool _onlyAvailable = false;
 
   int? _studentGrade;
   String? _studentAreaCode;
@@ -158,6 +159,13 @@ class _SearchPageState extends State<SearchPage> {
                       const SizedBox(width: 8),
                       _buildTypeChip(
                           'Individual', _selectedType == 'Individual'),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: const Text('Available seats'),
+                        selected: _onlyAvailable,
+                        onSelected: (val) =>
+                            setState(() => _onlyAvailable = val),
+                      ),
                     ],
                   ),
                 ),
@@ -202,7 +210,16 @@ class _SearchPageState extends State<SearchPage> {
               final subjectOk = _selectedSubjectCodes.isEmpty ||
                   _selectedSubjectCodes.contains(subject);
               final notEnrolled = !enrolledIds.contains(d.id);
-              return matchesText && subjectOk && notEnrolled;
+              // Available seats filter: enrolled_count < capacity (capacitySeats/max_students)
+              final capRaw = data['capacitySeats'] ??
+                  data['capacity_seats'] ??
+                  data['max_students'] ??
+                  data['maxStudents'];
+              final capacity = (capRaw is num) ? capRaw.toInt() : null;
+              final enrolled = (data['enrolled_count'] as num?)?.toInt() ?? 0;
+              final seatsOk = !_onlyAvailable ||
+                  (capacity == null ? true : enrolled < capacity);
+              return matchesText && subjectOk && notEnrolled && seatsOk;
             }).toList();
             if (docs.isEmpty) {
               return const Center(child: Text('No classes found.'));
@@ -647,6 +664,14 @@ class _SearchPageState extends State<SearchPage> {
                       subtitle: Text(_studentSubjects.isEmpty
                           ? 'No preferences set'
                           : _studentSubjects.map(_subjectName).join(', ')),
+                    ),
+                    CheckboxListTile(
+                      value: _onlyAvailable,
+                      onChanged: (v) =>
+                          updateBoth(() => _onlyAvailable = v ?? false),
+                      title:
+                          const Text('Only show classes with available seats'),
+                      subtitle: const Text('Hides classes that are full'),
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton(
