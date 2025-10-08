@@ -210,7 +210,7 @@ class _TutorDashboardPageState extends State<TutorDashboardPage> {
                         ),
                         IconButton(
                           icon: const Icon(Icons.notifications_outlined),
-                          onPressed: () {},
+                          onPressed: () => context.push('/tutor/announcements'),
                         ),
                       ],
                     ),

@@ -37,13 +37,32 @@ Rules:
 - Never invent Firestore data or internal states; point to the correct screen to check.
 - If unsure, say what screen to use rather than guessing.`;
 
-      // Optional grounding from Firestore (ai_guidance/app.snippets)
+      // Optional grounding from Firestore (ai_guidance/app.snippets) and simple RAG (ai_knowledge)
       let guidanceExtra = '';
       try {
         const db = getFirestore();
         const g = await db.collection('ai_guidance').doc('app').get();
         const snippets = (g.exists ? ((g.data() as any)?.snippets as string | undefined) : undefined) || '';
         if (snippets && typeof snippets === 'string') guidanceExtra = `\n\nApp notes:\n${snippets}`;
+        // Simple RAG: fetch small knowledge chunks and add top matches by keyword overlap
+        const knSnap = await db.collection('ai_knowledge').limit(100).get();
+        const items: Array<{ title: string; text: string; score: number }> = [];
+        const q = prompt.toLowerCase();
+        const tokens = q.split(/[^a-z0-9]+/).filter((t) => t.length > 2 && !['with','the','and','for','you','your','about','that'].includes(t));
+        for (const d of knSnap.docs) {
+          const data = d.data() as any;
+          const title = String(data.title || d.id);
+          const textStr = String(data.text || '');
+          const lower = textStr.toLowerCase();
+          let score = 0;
+          for (const t of tokens) { if (lower.includes(t)) score++; }
+          if (score > 0) items.push({ title, text: textStr, score });
+        }
+        items.sort((a,b)=> b.score - a.score);
+        const top = items.slice(0, 3);
+        if (top.length) {
+          guidanceExtra += '\n\nRelevant info (summaries):\n' + top.map((it)=>`- ${it.title}: ${it.text.substring(0, 400)}`).join('\n');
+        }
       } catch (_) {
         // ignore and use default system only
       }
@@ -82,6 +101,36 @@ Rules:
       ];
 
       let last404 = '';
+      // Tool: payment/invoice status quick check for this student
+      const lcPrompt = prompt.toLowerCase();
+      if ((lcPrompt.includes('payment') || lcPrompt.includes('invoice')) && lcPrompt.includes('status')) {
+        try {
+          const db = getFirestore();
+          const enrSnap = await db.collection('enrollments')
+            .where('studentId', '==', context.auth.uid)
+            .where('status', 'in', ['active','pending'])
+            .limit(5)
+            .get();
+          const statuses: Array<{ enrollmentId: string; className: string; status: string }> = [];
+          for (const e of enrSnap.docs) {
+            const enr = e.data() as any;
+            const classId = String(enr.classId || '');
+            let className = 'Class';
+            try {
+              const c = await db.collection('classes').doc(classId).get();
+              className = (c.data() as any)?.name || className;
+            } catch (_) {}
+            const inv = await db.collection('invoices').where('enrollmentId','==', e.id).limit(1).get();
+            const st = inv.empty ? 'awaiting_proof' : ((inv.docs[0].data() as any).status || 'awaiting_proof');
+            statuses.push({ enrollmentId: e.id, className, status: st });
+          }
+          if (statuses.length) {
+            const lines = statuses.map(s => `• ${s.className}: ${s.status} (open /enrollment/${s.enrollmentId})`).join('\n');
+            return { reply: `Here are your latest invoice statuses:\n${lines}`, hints: statuses.map(s => ({ label: s.className, route: `/enrollment/${s.enrollmentId}` })) };
+          }
+        } catch (_) { /* ignore and fall through to model */ }
+      }
+
       for (const model of candidatesModels) {
         const url = `https://${genRegion}-aiplatform.googleapis.com/v1/projects/${DATA_PLATFORM.dataProjectId}/locations/${genRegion}/publishers/google/models/${model}:generateContent`;
         const resp = await fetch(url, {

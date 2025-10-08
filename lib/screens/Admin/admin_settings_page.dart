@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../theme.dart';
 
 class AdminSettingsPage extends StatefulWidget {
@@ -9,18 +10,57 @@ class AdminSettingsPage extends StatefulWidget {
 }
 
 class _AdminSettingsPageState extends State<AdminSettingsPage> {
-  final _subscriptionFeeController = TextEditingController(text: '5000');
-  final _commissionController = TextEditingController(text: '10');
-  bool _emailNotifications = true;
+  final _subscriptionFeeController = TextEditingController();
+  final _commissionController = TextEditingController();
+  bool _emailNotifications = false;
   bool _smsNotifications = false;
-  bool _pushNotifications = true;
+  bool _pushNotifications = false;
   bool _autoApprovalEnabled = false;
+  bool _loading = true;
 
   @override
   void dispose() {
     _subscriptionFeeController.dispose();
     _commissionController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final platformDoc = await FirebaseFirestore.instance
+          .collection('config')
+          .doc('admin')
+          .collection('meta')
+          .doc('platform')
+          .get();
+      final p = platformDoc.data() ?? <String, dynamic>{};
+      _subscriptionFeeController.text =
+          ((p['subscriptionFee'] as num?)?.toString() ?? '');
+      _commissionController.text =
+          ((p['commissionPct'] as num?)?.toString() ?? '');
+      _autoApprovalEnabled = (p['autoApprovalEnabled'] as bool?) ?? false;
+
+      final notifDoc = await FirebaseFirestore.instance
+          .collection('config')
+          .doc('admin')
+          .collection('meta')
+          .doc('notifications')
+          .get();
+      final n = notifDoc.data() ?? <String, dynamic>{};
+      _emailNotifications = (n['email'] as bool?) ?? false;
+      _smsNotifications = (n['sms'] as bool?) ?? false;
+      _pushNotifications = (n['push'] as bool?) ?? false;
+    } catch (_) {
+      // ignore load errors; keep defaults
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -45,7 +85,9 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
             SizedBox(height: isMobile ? 16 : 24),
 
             // Settings Layout
-            if (isMobile)
+            if (_loading)
+              const Center(child: CircularProgressIndicator())
+            else if (isMobile)
               Column(
                 children: [
                   _buildPlatformSettingsCard(isMobile, isTablet),
@@ -163,12 +205,13 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
-            height: isMobile ? 40 : 44,
             child: ElevatedButton(
               onPressed: _savePlatformSettings,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.brandPrimary,
                 foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(vertical: isMobile ? 14 : 16),
+                minimumSize: Size.fromHeight(isMobile ? 44 : 48),
               ),
               child: Text(
                 'Save Platform Settings',
@@ -251,12 +294,13 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
-              height: 40,
               child: ElevatedButton(
                 onPressed: _saveNotificationSettings,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.brandPrimary,
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  minimumSize: const Size.fromHeight(44),
                 ),
                 child: const Text(
                   'Save Notifications',
@@ -428,21 +472,61 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
   }
 
   void _savePlatformSettings() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Platform settings saved successfully'),
-        backgroundColor: Colors.green,
-      ),
-    );
+    final fee = num.tryParse(_subscriptionFeeController.text.trim()) ?? 0;
+    final pct = num.tryParse(_commissionController.text.trim()) ?? 0;
+    FirebaseFirestore.instance
+        .collection('config')
+        .doc('admin')
+        .collection('meta')
+        .doc('platform')
+        .set({
+      'subscriptionFee': fee,
+      'commissionPct': pct,
+      'autoApprovalEnabled': _autoApprovalEnabled,
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true)).then((_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Platform settings saved successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }).catchError((e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    });
   }
 
   void _saveNotificationSettings() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Notification settings saved successfully'),
-        backgroundColor: Colors.green,
-      ),
-    );
+    FirebaseFirestore.instance
+        .collection('config')
+        .doc('admin')
+        .collection('meta')
+        .doc('notifications')
+        .set({
+      'email': _emailNotifications,
+      'sms': _smsNotifications,
+      'push': _pushNotifications,
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true)).then((_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Notification settings saved successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }).catchError((e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save notifications: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    });
   }
 
   void _showSystemLogs() {

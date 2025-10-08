@@ -21,6 +21,8 @@ class _AdminPaymentVerificationPageState
         .snapshots();
   }
 
+// duplicate removed
+
   String _initialsOf(dynamic name) {
     final s = (name as String?)?.trim() ?? '';
     if (s.isEmpty) return 'S';
@@ -60,12 +62,36 @@ class _AdminPaymentVerificationPageState
                   crossAxisSpacing: 12,
                   childAspectRatio: isMobile ? 4 : (isTablet ? 2.5 : 2),
                   children: [
-                    _buildStatCard(
-                        Icons.pending, '2', 'Pending', Colors.orange),
-                    _buildStatCard(
-                        Icons.check_circle, '156', 'Verified', Colors.green),
-                    _buildStatCard(Icons.attach_money, 'LKR 847K', 'Processed',
-                        Colors.blue),
+                    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: FirebaseFirestore.instance
+                          .collection('payments')
+                          .where('verifyStatus', isEqualTo: 'pending')
+                          .snapshots(),
+                      builder: (context, s) {
+                        final v = (s.data?.size ?? 0).toString();
+                        return _buildStatCard(
+                            Icons.pending, v, 'Pending', Colors.orange);
+                      },
+                    ),
+                    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: FirebaseFirestore.instance
+                          .collection('payments')
+                          .where('verifyStatus', isEqualTo: 'verified')
+                          .snapshots(),
+                      builder: (context, s) {
+                        final v = (s.data?.size ?? 0).toString();
+                        return _buildStatCard(
+                            Icons.check_circle, v, 'Verified', Colors.green);
+                      },
+                    ),
+                    FutureBuilder<String>(
+                      future: _sumProcessedAmount(),
+                      builder: (context, s) {
+                        final v = s.data ?? 'LKR 0';
+                        return _buildStatCard(
+                            Icons.attach_money, v, 'Processed', Colors.blue);
+                      },
+                    ),
                   ],
                 );
               },
@@ -713,5 +739,18 @@ class _AdminPaymentVerificationPageState
         ),
       ),
     );
+  }
+
+  Future<String> _sumProcessedAmount() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('payments')
+        .where('verifyStatus', isEqualTo: 'verified')
+        .get();
+    final totalAmount = snapshot.docs.fold(0.0, (sum, doc) {
+      final data = doc.data();
+      final amount = data['paidAmount'] ?? data['amountDue'] ?? 0;
+      return sum + amount;
+    });
+    return 'LKR $totalAmount';
   }
 }

@@ -36,8 +36,13 @@ import '../screens/tutor/tutor_student_details_page.dart';
 import '../screens/tutor/tutor_subscription_page.dart';
 import '../screens/tutor/create_session_page.dart';
 import '../screens/tutor/tutor_session_details_page.dart';
+import '../screens/tutor/tutor_announcements_page.dart';
 import '../screens/student_class_details_page.dart';
 import '../screens/student_enrollment_details_page.dart';
+import '../screens/my_schedule_page.dart';
+import '../screens/notifications_page.dart';
+import '../screens/settings_page.dart';
+import '../screens/help_support_page.dart';
 
 final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -51,9 +56,13 @@ final GoRouter appRouter = GoRouter(
     final bool goingToAuth = dest.startsWith('/auth');
     final bool goingToStudent = dest.startsWith('/student');
     final bool goingToTutor = dest == '/tutor';
+    final bool goingToTutorAuth = dest.startsWith('/tutor/auth');
 
     if (!loggedIn && goingToStudent) {
       return '/auth';
+    }
+    if (loggedIn && goingToTutorAuth) {
+      return '/tutor';
     }
     if (loggedIn && goingToAuth) {
       return '/student';
@@ -128,6 +137,22 @@ final GoRouter appRouter = GoRouter(
       path: '/profile',
       builder: (context, state) => const ProfilePage(),
     ),
+    GoRoute(
+      path: '/notifications',
+      builder: (context, state) => const NotificationSettingsPage(),
+    ),
+    GoRoute(
+      path: '/settings',
+      builder: (context, state) => const SettingsPage(),
+    ),
+    GoRoute(
+      path: '/help',
+      builder: (context, state) => const HelpSupportPage(),
+    ),
+    GoRoute(
+      path: '/schedule',
+      builder: (context, state) => const MySchedulePage(),
+    ),
     // Student view of announcements
     GoRoute(
       path: '/announcements',
@@ -175,6 +200,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/tutor/messages',
       builder: (context, state) => const TutorMessagesPage(),
+    ),
+    GoRoute(
+      path: '/tutor/announcements',
+      builder: (context, state) => const TutorAnnouncementsPage(),
     ),
     GoRoute(
       path: '/tutor/profile',

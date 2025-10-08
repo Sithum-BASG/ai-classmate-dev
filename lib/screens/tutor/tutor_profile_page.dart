@@ -408,7 +408,7 @@ class _TutorProfilePageState extends State<TutorProfilePage> {
                     ),
                     IconButton(
                       icon: const Icon(Icons.notifications_outlined),
-                      onPressed: () {},
+                      onPressed: () => context.push('/tutor/announcements'),
                     ),
                   ],
                 ),

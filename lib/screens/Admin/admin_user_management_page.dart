@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../theme.dart';
 
 class AdminUserManagementPage extends StatefulWidget {
@@ -14,33 +15,26 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage>
   late TabController _tabController;
   final _searchController = TextEditingController();
 
-  final List<Map<String, dynamic>> _students = [
-    {
-      'id': 'STU001',
-      'name': 'Sahan Fernando',
-      'email': 'sahan@email.com',
-      'phone': '+94 77 123 4567',
-      'enrolledClasses': 3,
-      'status': 'active',
-      'lastActive': '5 min ago',
-      'joinDate': '2024-01-15',
-    },
-  ];
+  Stream<QuerySnapshot<Map<String, dynamic>>> _studentsStream() {
+    return FirebaseFirestore.instance
+        .collection('student_profiles')
+        .orderBy(FieldPath.documentId)
+        .snapshots();
+  }
 
-  final List<Map<String, dynamic>> _tutors = [
-    {
-      'id': 'TUT001',
-      'name': 'Dr. Anoja Perera',
-      'email': 'anoja@email.com',
-      'phone': '+94 77 987 6543',
-      'subjects': 'Mathematics, Physics',
-      'students': 25,
-      'status': 'active',
-      'lastActive': '12 min ago',
-      'profileUpdated': true,
-      'joinDate': '2023-12-01',
-    },
-  ];
+  Stream<QuerySnapshot<Map<String, dynamic>>> _tutorsStream() {
+    return FirebaseFirestore.instance
+        .collection('tutor_profiles')
+        .orderBy('status')
+        .snapshots();
+  }
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> _suspendedUsersStream() {
+    return FirebaseFirestore.instance
+        .collection('users')
+        .where('status', isEqualTo: 'suspended')
+        .snapshots();
+  }
 
   @override
   void initState() {
@@ -196,7 +190,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage>
       padding: EdgeInsets.all(isMobile ? 12 : (isTablet ? 16 : 24)),
       child: Column(
         children: [
-          // Stats Grid
+          // Stats Grid (live)
           LayoutBuilder(
             builder: (context, constraints) {
               return GridView.count(
@@ -207,19 +201,41 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage>
                 crossAxisSpacing: 16,
                 childAspectRatio: isMobile ? 3.5 : (isTablet ? 2.5 : 2),
                 children: [
-                  _buildStatCard(
-                      Icons.people, '247', 'Total Students', Colors.blue),
-                  _buildStatCard(
-                      Icons.school, '38', 'Active Tutors', Colors.green),
-                  _buildStatCard(
-                      Icons.block, '5', 'Suspended Users', Colors.red),
+                  FutureBuilder<int>(
+                    future: _count(FirebaseFirestore.instance
+                        .collection('student_profiles')),
+                    builder: (context, s) => _buildStatCard(
+                        Icons.people,
+                        (s.data ?? 0).toString(),
+                        'Total Students',
+                        Colors.blue),
+                  ),
+                  FutureBuilder<int>(
+                    future: _count(FirebaseFirestore.instance
+                        .collection('tutor_profiles')
+                        .where('status', isEqualTo: 'approved')),
+                    builder: (context, s) => _buildStatCard(
+                        Icons.school,
+                        (s.data ?? 0).toString(),
+                        'Active Tutors',
+                        Colors.green),
+                  ),
+                  FutureBuilder<int>(
+                    future: _count(FirebaseFirestore.instance
+                        .collection('users')
+                        .where('status', isEqualTo: 'suspended')),
+                    builder: (context, s) => _buildStatCard(
+                        Icons.block,
+                        (s.data ?? 0).toString(),
+                        'Suspended Users',
+                        Colors.red),
+                  ),
                 ],
               );
             },
           ),
           const SizedBox(height: 24),
-
-          // Recent User Activity
+          // Recent Users (live, latest students)
           Container(
             padding: EdgeInsets.all(isMobile ? 12 : (isTablet ? 16 : 20)),
             decoration: BoxDecoration(
@@ -236,40 +252,39 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Recent User Activity',
+                  'Recent Students',
                   style: TextStyle(
                     fontSize: isMobile ? 16 : 18,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 20),
-                _buildActivityItem(
-                  Icons.person,
-                  'Sahan Fernando',
-                  'Enrolled in Physics A/L',
-                  '5 min ago',
-                  Colors.blue,
-                ),
-                _buildActivityItem(
-                  Icons.school,
-                  'Dr. Anoja Perera',
-                  'Profile updated',
-                  '12 min ago',
-                  Colors.green,
-                ),
-                _buildActivityItem(
-                  Icons.person,
-                  'Nimasha Silva',
-                  'Payment submitted',
-                  '25 min ago',
-                  Colors.blue,
-                ),
-                _buildActivityItem(
-                  Icons.school,
-                  'Mr. Ruwan Silva',
-                  'New class created',
-                  '1 hour ago',
-                  Colors.green,
+                const SizedBox(height: 12),
+                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collection('student_profiles')
+                      .orderBy(FieldPath.documentId, descending: true)
+                      .limit(5)
+                      .snapshots(),
+                  builder: (context, s) {
+                    final docs = s.data?.docs ?? const [];
+                    if (docs.isEmpty) {
+                      return const Text('No recent students');
+                    }
+                    return Column(
+                      children: docs.map((d) {
+                        final m = d.data();
+                        final name = (m['full_name'] as String?) ?? 'Student';
+                        final email = (m['email'] as String?) ?? '';
+                        return _buildActivityItem(
+                          Icons.person,
+                          name,
+                          email.isEmpty ? d.id : email,
+                          '',
+                          Colors.blue,
+                        );
+                      }).toList(),
+                    );
+                  },
                 ),
               ],
             ),
@@ -282,12 +297,46 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage>
   Widget _buildStudentsTab() {
     final isMobile = MediaQuery.of(context).size.width < 600;
 
-    return ListView.builder(
-      padding: EdgeInsets.all(isMobile ? 12 : 24),
-      itemCount: _students.length,
-      itemBuilder: (context, index) {
-        final student = _students[index];
-        return _buildUserCard(student, isStudent: true);
+    // Exclude suspended users using users collection
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _suspendedUsersStream(),
+      builder: (context, susSnap) {
+        final suspendedIds = <String>{
+          for (final d in (susSnap.data?.docs ?? const [])) d.id
+        };
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: _studentsStream(),
+          builder: (context, s) {
+            final docs = s.data?.docs ?? const [];
+            final query = _searchController.text.trim().toLowerCase();
+            final filtered = docs.where((d) {
+              if (suspendedIds.contains(d.id)) return false;
+              final m = d.data();
+              final name = ((m['full_name'] ?? '') as String).toLowerCase();
+              final email = ((m['email'] ?? '') as String).toLowerCase();
+              if (query.isEmpty) return true;
+              return name.contains(query) ||
+                  email.contains(query) ||
+                  d.id.contains(query);
+            }).toList();
+            return ListView.builder(
+              padding: EdgeInsets.all(isMobile ? 12 : 24),
+              itemCount: filtered.length,
+              itemBuilder: (context, index) {
+                final d = filtered[index];
+                final m = d.data();
+                final card = {
+                  'id': d.id,
+                  'name': (m['full_name'] as String?) ?? 'Student',
+                  'email': (m['email'] as String?) ?? '',
+                  'phone': (m['phone'] as String?) ?? '',
+                  'status': 'active',
+                };
+                return _buildUserCard(card, isStudent: true);
+              },
+            );
+          },
+        );
       },
     );
   }
@@ -295,19 +344,80 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage>
   Widget _buildTutorsTab() {
     final isMobile = MediaQuery.of(context).size.width < 600;
 
-    return ListView.builder(
-      padding: EdgeInsets.all(isMobile ? 12 : 24),
-      itemCount: _tutors.length,
-      itemBuilder: (context, index) {
-        final tutor = _tutors[index];
-        return _buildUserCard(tutor, isStudent: false);
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _suspendedUsersStream(),
+      builder: (context, susSnap) {
+        final suspendedIds = <String>{
+          for (final d in (susSnap.data?.docs ?? const [])) d.id
+        };
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: _tutorsStream(),
+          builder: (context, s) {
+            final docs = s.data?.docs ?? const [];
+            final query = _searchController.text.trim().toLowerCase();
+            final filtered = docs.where((d) {
+              if (suspendedIds.contains(d.id)) return false;
+              final m = d.data();
+              final name = ((m['full_name'] ?? '') as String).toLowerCase();
+              final email = ((m['email'] ?? '') as String).toLowerCase();
+              if (query.isEmpty) return true;
+              return name.contains(query) ||
+                  email.contains(query) ||
+                  d.id.contains(query);
+            }).toList();
+            return ListView.builder(
+              padding: EdgeInsets.all(isMobile ? 12 : 24),
+              itemCount: filtered.length,
+              itemBuilder: (context, index) {
+                final d = filtered[index];
+                final m = d.data();
+                final subjects =
+                    (m['subjects_taught'] as List?)?.join(', ') ?? '';
+                final card = {
+                  'id': d.id,
+                  'name': (m['full_name'] as String?) ?? 'Tutor',
+                  'email': (m['email'] as String?) ?? '',
+                  'phone': (m['phone'] as String?) ?? '',
+                  'subjects': subjects,
+                  'status': (m['status'] as String?) ?? '',
+                };
+                return _buildUserCard(card, isStudent: false);
+              },
+            );
+          },
+        );
       },
     );
   }
 
   Widget _buildSuspendedTab() {
-    return const Center(
-      child: Text('No suspended users'),
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _suspendedUsersStream(),
+      builder: (context, s) {
+        final docs = s.data?.docs ?? const [];
+        if (docs.isEmpty) {
+          return const Center(child: Text('No suspended users'));
+        }
+        return ListView.builder(
+          padding: EdgeInsets.all(isMobile ? 12 : 24),
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            final d = docs[index];
+            final m = d.data();
+            final role = (m['role'] as String?) ?? '';
+            final card = {
+              'id': d.id,
+              'name': (m['name'] as String?) ?? d.id,
+              'email': (m['email'] as String?) ?? '',
+              'phone': (m['phone'] as String?) ?? '',
+              'status': 'suspended',
+              'role': role,
+            };
+            return _buildUserCard(card, isStudent: role == 'student');
+          },
+        );
+      },
     );
   }
 
@@ -502,26 +612,28 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage>
                 ),
               ),
               if (!isMobile)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: user['status'] == 'active'
-                        ? Colors.green.withValues(alpha: 0.1)
-                        : Colors.red.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    user['status'] == 'active' ? 'Active' : 'Suspended',
-                    style: TextStyle(
-                      color: user['status'] == 'active'
-                          ? Colors.green
-                          : Colors.red,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
+                (isStudent)
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: user['status'] == 'active'
+                              ? Colors.green.withValues(alpha: 0.1)
+                              : Colors.red.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          user['status'] == 'active' ? 'Active' : 'Suspended',
+                          style: TextStyle(
+                            color: user['status'] == 'active'
+                                ? Colors.green
+                                : Colors.red,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      )
+                    : _tutorStatusChip(user['status'] as String? ?? '', 12),
               PopupMenuButton<String>(
                 icon: Icon(Icons.more_vert, size: isMobile ? 20 : 24),
                 onSelected: (value) => _handleUserAction(value, user),
@@ -565,26 +677,28 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage>
                       : '${user['students']} students',
                   style: const TextStyle(fontSize: 11),
                 ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: user['status'] == 'active'
-                        ? Colors.green.withValues(alpha: 0.1)
-                        : Colors.red.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    user['status'] == 'active' ? 'Active' : 'Suspended',
-                    style: TextStyle(
-                      color: user['status'] == 'active'
-                          ? Colors.green
-                          : Colors.red,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 10,
-                    ),
-                  ),
-                ),
+                (isStudent)
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: user['status'] == 'active'
+                              ? Colors.green.withValues(alpha: 0.1)
+                              : Colors.red.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          user['status'] == 'active' ? 'Active' : 'Suspended',
+                          style: TextStyle(
+                            color: user['status'] == 'active'
+                                ? Colors.green
+                                : Colors.red,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 10,
+                          ),
+                        ),
+                      )
+                    : _tutorStatusChip(user['status'] as String? ?? '', 10),
               ],
             ),
           ],
@@ -593,13 +707,14 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage>
     );
   }
 
-  void _handleUserAction(String action, Map<String, dynamic> user) {
+  void _handleUserAction(String action, Map<String, dynamic> user) async {
+    final rootContext = context; // preserve ancestor context for SnackBars
     switch (action) {
       case 'suspend':
       case 'activate':
         showDialog(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (dialogContext) => AlertDialog(
             title: Text(action == 'suspend' ? 'Suspend User' : 'Activate User'),
             content: Text(
               action == 'suspend'
@@ -608,21 +723,46 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage>
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        action == 'suspend'
-                            ? 'User suspended successfully'
-                            : 'User activated successfully',
-                      ),
-                    ),
-                  );
+                onPressed: () async {
+                  Navigator.pop(dialogContext);
+                  final uid = user['id'] as String?;
+                  if (uid == null || uid.isEmpty) return;
+                  final status = action == 'suspend' ? 'suspended' : 'active';
+                  try {
+                    final doc =
+                        FirebaseFirestore.instance.collection('users').doc(uid);
+                    final snap = await doc.get();
+                    if (snap.exists) {
+                      await doc
+                          .set({'status': status}, SetOptions(merge: true));
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(rootContext).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            status == 'suspended'
+                                ? 'User suspended successfully'
+                                : 'User activated successfully',
+                          ),
+                        ),
+                      );
+                    } else {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(rootContext).showSnackBar(
+                        const SnackBar(
+                            content: Text(
+                                'Cannot update status: user record not found')),
+                      );
+                    }
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(rootContext).showSnackBar(
+                      SnackBar(content: Text('Failed to update: $e')),
+                    );
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
@@ -637,20 +777,20 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage>
       case 'delete':
         showDialog(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (dialogContext) => AlertDialog(
             title: const Text('Delete User'),
             content: Text(
               'Are you sure you want to permanently delete ${user['name']}? This action cannot be undone.',
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  Navigator.pop(dialogContext);
+                  ScaffoldMessenger.of(rootContext).showSnackBar(
                     const SnackBar(
                       content: Text('User deleted successfully'),
                       backgroundColor: Colors.red,
@@ -666,6 +806,56 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage>
         break;
       default:
         break;
+    }
+  }
+
+  // Helper to render tutor status chip (approved/pending/rejected)
+  Widget _tutorStatusChip(String status, double fontSize) {
+    final s = status.toLowerCase();
+    Color color;
+    switch (s) {
+      case 'approved':
+        color = Colors.green;
+        break;
+      case 'pending':
+        color = Colors.orange;
+        break;
+      case 'rejected':
+        color = Colors.red;
+        break;
+      default:
+        color = Colors.grey;
+    }
+    final bg = color.withValues(alpha: 0.1);
+    final label = s.isEmpty
+        ? 'Unknown'
+        : s[0].toUpperCase() + (s.length > 1 ? s.substring(1) : '');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w600,
+          fontSize: fontSize,
+        ),
+      ),
+    );
+  }
+
+  Future<int> _count(Query<Map<String, dynamic>> query) async {
+    try {
+      final agg = await query.count().get();
+      return agg.count ?? 0;
+    } catch (_) {
+      try {
+        final snap = await query.limit(1000).get();
+        return snap.size;
+      } catch (_) {
+        return 0;
+      }
     }
   }
 }

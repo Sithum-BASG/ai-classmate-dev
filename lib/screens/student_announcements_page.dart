@@ -7,7 +7,8 @@ class StudentAnnouncementsPage extends StatelessWidget {
   const StudentAnnouncementsPage({super.key});
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _announcementsStream() {
-    // Read public announcements; order by created_at desc if available
+    // Read public announcements; order by created_at desc
+    // Audience filtering is applied client-side to avoid composite index needs
     final coll = FirebaseFirestore.instance.collection('announcements');
     return coll.orderBy('created_at', descending: true).snapshots();
   }
@@ -41,15 +42,21 @@ class StudentAnnouncementsPage extends StatelessWidget {
             );
           }
           final docs = snapshot.data?.docs ?? [];
-          if (docs.isEmpty) {
+          // Filter by audience: show only All Users or Students Only
+          final filtered = docs.where((d) {
+            final a = d.data();
+            final aud = ((a['audience'] as String?) ?? 'All Users').trim();
+            return aud == 'All Users' || aud == 'Students Only';
+          }).toList();
+          if (filtered.isEmpty) {
             return const Center(child: Text('No announcements yet'));
           }
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemCount: docs.length,
+            itemCount: filtered.length,
             itemBuilder: (context, i) {
-              final a = docs[i].data();
+              final a = filtered[i].data();
               final title = (a['title'] as String?) ?? 'Announcement';
               final msg = (a['message'] as String?) ?? '';
               final audience = (a['audience'] as String?) ?? 'All Users';

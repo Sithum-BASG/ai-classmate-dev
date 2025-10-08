@@ -24,6 +24,12 @@ class _ChatbotPageState extends State<ChatbotPage> {
   bool _isSending = false;
   final ScrollController _scrollController = ScrollController();
   List<Map<String, String>> _hints = const [];
+  final List<String> _suggestions = const [
+    'How do I enroll?',
+    'Where is my payment status?',
+    'How do I message my tutor?',
+    'Show announcements'
+  ];
 
   @override
   void dispose() {
@@ -59,6 +65,11 @@ class _ChatbotPageState extends State<ChatbotPage> {
       _scrollToBottom();
       await Future.delayed(const Duration(milliseconds: 14));
     }
+  }
+
+  Future<void> _sendWithText(String text) async {
+    _messageController.text = text;
+    await _sendMessage();
   }
 
   Future<void> _sendMessage() async {
@@ -230,6 +241,24 @@ class _ChatbotPageState extends State<ChatbotPage> {
                               final route = h['route'] ?? '/';
                               context.go(route);
                             },
+                          ))
+                      .toList(),
+                ),
+              ),
+            ),
+          if (_messages.length <= 2)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: _suggestions
+                      .map((s) => InputChip(
+                            label: Text(s),
+                            onPressed:
+                                _isSending ? null : () => _sendWithText(s),
                           ))
                       .toList(),
                 ),
