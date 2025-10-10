@@ -15,11 +15,10 @@ class TutorMessagesPage extends StatefulWidget {
 class _TutorMessagesPageState extends State<TutorMessagesPage> {
   int _selectedIndex = 2;
 
-  Stream<List<Map<String, dynamic>>> _classMessagesStream() async* {
+  Future<List<Map<String, dynamic>>> _loadClassMessages() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
-      yield const [];
-      return;
+      return const [];
     }
     try {
       final classesSnap = await FirebaseFirestore.instance
@@ -30,11 +29,20 @@ class _TutorMessagesPageState extends State<TutorMessagesPage> {
       final classIds = mapById.keys.toList();
       final out = <Map<String, dynamic>>[];
       for (final classId in classIds) {
+        // compute live student count from enrollments (active/pending)
+        int studentCount = 0;
+        try {
+          final enrSnap = await FirebaseFirestore.instance
+              .collection('enrollments')
+              .where('classId', isEqualTo: classId)
+              .where('status', whereIn: ['active', 'pending']).get();
+          studentCount = enrSnap.docs.length;
+        } catch (_) {}
         final ann = await FirebaseFirestore.instance
             .collection('classes')
             .doc(classId)
             .collection('announcements')
-            .orderBy('created_at', descending: true)
+            .orderBy('created_at_ts', descending: true)
             .limit(1)
             .get();
         final cdata = mapById[classId] ?? <String, dynamic>{};
@@ -42,19 +50,23 @@ class _TutorMessagesPageState extends State<TutorMessagesPage> {
           'classId': classId,
           'className': (cdata['name'] as String?) ?? 'Class',
           'type': (cdata['type'] as String?) ?? 'Group',
-          'students': (cdata['enrolled_count'] as num?)?.toInt() ?? 0,
+          'students': studentCount,
           'lastMessage': ann.docs.isNotEmpty
               ? ((ann.docs.first.data()['message'] as String?) ?? '')
               : '',
           'time': ann.docs.isNotEmpty
-              ? ((ann.docs.first.data()['created_at'] as String?) ?? '')
+              ? (() {
+                  final a = ann.docs.first.data();
+                  final ts = a['created_at_ts'];
+                  if (ts is Timestamp) return ts.toDate().toIso8601String();
+                  return (a['created_at'] as String?) ?? '';
+                })()
               : '',
         });
       }
-      yield out;
+      return out;
     } catch (e) {
-      // swallow stream error to avoid framework exception pause
-      yield const [];
+      return const [];
     }
   }
 
@@ -141,8 +153,8 @@ class _TutorMessagesPageState extends State<TutorMessagesPage> {
         body: TabBarView(
           children: [
             // Class Messages Tab
-            StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _classMessagesStream(),
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: _loadClassMessages(),
               builder: (context, snap) {
                 if (snap.hasError) {
                   return const Center(
@@ -538,6 +550,7 @@ class _TutorMessagesPageState extends State<TutorMessagesPage> {
                             'title': 'Class Message',
                             'message': text,
                             'created_at': DateTime.now().toIso8601String(),
+                            'created_at_ts': FieldValue.serverTimestamp(),
                             'status': 'sent'
                           });
                           if (mounted) {

@@ -15,10 +15,10 @@ service firebase.storage {
     }
 
     // Class materials: class_materials/{classId}/{materialId}/{fileName}
-    // Only the class tutor (approved) or admin can write/delete; reads allowed if class is published
+    // Allow writes by any signed-in user; Firestore metadata write still restricted to class tutor
     match /class_materials/{classId}/{materialId}/{fileName} {
       allow read: if true;
-      allow write: if isAdmin() || (isTutor() && tutorApproved());
+      allow write: if signedIn();
       allow delete: if isAdmin() || (isTutor() && tutorApproved());
     }
 

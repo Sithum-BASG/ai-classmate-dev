@@ -31,6 +31,7 @@ class BackendConfig {
   static const String fnGetRecommendationsRealtime =
       'getRecommendationsRealtime';
   static const String fnCreateOrUpdateSession = 'createOrUpdateSession';
+  static const String fnScheduleWeeklySessions = 'scheduleWeeklySessions';
   static const String fnGetEnrollmentPaymentStatus =
       'getEnrollmentPaymentStatus';
   static const String fnChatbotReply = 'chatbotReply';

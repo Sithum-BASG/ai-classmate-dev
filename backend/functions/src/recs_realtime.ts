@@ -53,9 +53,15 @@ export const getRecommendationsRealtime = functions
       classesDocs = snaps.filter((s) => s.exists).map((s) => ({ id: s.id, data: () => s.data()! } as any));
     } else {
       let query = db.collection('classes').where('status', '==', 'published');
-      if (grade) query = query.where('grade', '==', grade);
-      const classesSnap = await query.limit(200).get();
+      let classesSnap = await (grade ? query.where('grade', '==', grade) : query)
+        .limit(200)
+        .get();
       classesDocs = classesSnap.docs;
+      // Fallback: if nothing matches grade, fetch without grade filter
+      if (!classesDocs.length) {
+        classesSnap = await query.limit(200).get();
+        classesDocs = classesSnap.docs;
+      }
     }
 
     // Build student's existing session schedule from active/pending enrollments
@@ -117,12 +123,9 @@ export const getRecommendationsRealtime = functions
       const price = Number(cl.price || cl.fee || 0);
       const priceBand = cl.priceBand || (price <= 3500 ? 'low' : price <= 5500 ? 'mid' : 'high');
 
-      // subject and area filters (skip when classIds explicitly provided)
+      // Loosen filters to avoid empty candidates; we will let the model rank.
+      // Previously we filtered out subject/area mismatches which led to empty results.
       const isOnline = modeNorm === 'online';
-      if (!providedClassIds.length) {
-        if (subjects.length && subj && !subjects.includes(subj)) continue;
-        if (!isOnline && areaCode && area && area !== areaCode) continue;
-      }
 
       const popularity = (tutors.get(cl.tutorId) || 0) / maxPop * 100.0;
 
@@ -177,8 +180,23 @@ export const getRecommendationsRealtime = functions
     // Call Vertex endpoint
     // Allow override via env or functions config
     const cfg = (functions.config() as any) || {};
-    const endpointId = process.env.RECS_ENDPOINT_ID || cfg.recs?.endpoint_id || '941353477190189056';
-    const url = `https://asia-south1-aiplatform.googleapis.com/v1/projects/${DATA_PLATFORM.dataProjectId}/locations/asia-south1/endpoints/${endpointId}:predict`;
+    // Prefer Functions config; fall back to env only if config is absent
+    const endpointId = (cfg.recs?.endpoint_id) || process.env.RECS_ENDPOINT_ID || '8590470054162726912';
+    const projectId = (cfg.recs?.project_id) || process.env.RECS_PROJECT_ID || DATA_PLATFORM.dataProjectId;
+    const projectNumber = (cfg.recs?.project_number) || process.env.RECS_PROJECT_NUMBER;
+    const endpointDomain = (cfg.recs?.endpoint_domain) || process.env.RECS_ENDPOINT_DOMAIN;
+    const region = 'us-central1';
+    // Dedicated endpoints must be called via dedicated domain:
+    //   https://{ENDPOINT_ID}.{region}-{PROJECT_NUMBER}.prediction.vertexai.goog
+    let url: string;
+    if (endpointDomain) {
+      url = `https://${endpointDomain}/v1/projects/${projectId}/locations/${region}/endpoints/${endpointId}:predict`;
+    } else if (projectNumber) {
+      url = `https://${endpointId}.${region}-${projectNumber}.prediction.vertexai.goog/v1/projects/${projectId}/locations/${region}/endpoints/${endpointId}:predict`;
+    } else {
+      // Fallback to shared domain (works for non-dedicated endpoints)
+      url = `https://${region}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/endpoints/${endpointId}:predict`;
+    }
     const token = await getAccessToken();
     const resp = await fetch(url, {
       method: 'POST',
@@ -205,10 +223,22 @@ export const getRecommendationsRealtime = functions
       }
       return 0;
     };
-    const results = predictions.map((p, i) => ({ classId: classIds[i], score: getScore(p) }));
+    let results = predictions.map((p, i) => ({ classId: classIds[i], score: getScore(p) }));
+    // Fallback heuristic if Vertex returned empty or mismatched
+    if (!results.length) {
+      results = classIds.map((cid, i) => ({ classId: cid, score: 0 }));
+    }
     results.sort((a, b) => b.score - a.score);
     // If specific classIds were requested, return all scored items (no trimming)
-    const outResults = providedClassIds.length ? results : results.slice(0, limit);
+    let outResults = providedClassIds.length ? results : results.slice(0, limit);
+    // Secondary fallback: if still empty, return top classes by tutor popularity (no model)
+    if (!outResults.length) {
+      const byPop = classesDocs.map((c) => ({
+        classId: c.id,
+        pop: (tutors.get((c.data() as any).tutorId) || 0)
+      })).sort((a, b) => b.pop - a.pop).slice(0, limit);
+      outResults = byPop.map((x) => ({ classId: x.classId, score: x.pop }));
+    }
     return debug ? { results: outResults, debug: { predictions, instancesCount: instances.length } } : { results: outResults };
   });
 

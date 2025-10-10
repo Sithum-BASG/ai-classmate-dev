@@ -53,7 +53,13 @@ class _TutorLoginPageState extends State<TutorLoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Tutor Login')),
+      appBar: AppBar(
+        title: const Text('Tutor Login'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/'),
+        ),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Form(
@@ -104,6 +110,11 @@ class _TutorLoginPageState extends State<TutorLoginPage> {
                             strokeWidth: 2,
                             valueColor: AlwaysStoppedAnimation(Colors.white)))
                     : const Text('Login'),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => context.go('/tutor/auth/register'),
+                child: const Text('Create an account'),
               ),
             ],
           ),

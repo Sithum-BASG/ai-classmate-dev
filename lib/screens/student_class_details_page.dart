@@ -106,7 +106,22 @@ class StudentClassDetailsPage extends StatelessWidget {
                                     tSnap.data?.data() ?? <String, dynamic>{};
                                 final tutorName =
                                     (t['full_name'] as String?) ?? 'Tutor';
-                                return Text('Tutor: $tutorName');
+                                return Expanded(
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                          child: Text('Tutor: $tutorName')),
+                                      const SizedBox(width: 8),
+                                      _TutorRatingSummary(tutorId: tutorId),
+                                      const SizedBox(width: 8),
+                                      TextButton(
+                                        onPressed: () =>
+                                            _showTutorProfile(context, tutorId),
+                                        child: const Text('View Profile'),
+                                      ),
+                                    ],
+                                  ),
+                                );
                               },
                             ),
                           ],
@@ -170,6 +185,217 @@ class StudentClassDetailsPage extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+
+  void _showTutorProfile(BuildContext context, String tutorId) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: SingleChildScrollView(
+                controller: scrollController,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.person, color: AppTheme.brandPrimary),
+                        const SizedBox(width: 8),
+                        FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                          future: FirebaseFirestore.instance
+                              .collection('tutor_profiles')
+                              .doc(tutorId)
+                              .get(),
+                          builder: (context, snap) {
+                            final data =
+                                snap.data?.data() ?? <String, dynamic>{};
+                            final name =
+                                (data['full_name'] as String?) ?? 'Tutor';
+                            return Text(name,
+                                style: const TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.w700));
+                          },
+                        ),
+                        const Spacer(),
+                        _TutorRatingSummary(tutorId: tutorId),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                      future: FirebaseFirestore.instance
+                          .collection('tutor_profiles')
+                          .doc(tutorId)
+                          .get(),
+                      builder: (context, pSnap) {
+                        final p = pSnap.data?.data() ?? <String, dynamic>{};
+                        final subjects =
+                            (p['subjects_taught'] as List?)?.cast<String>() ??
+                                const <String>[];
+                        final areaCode = (p['area_code'] as String?) ?? '';
+                        final about = (p['about'] as String?) ?? '';
+                        final qualifications =
+                            (p['qualifications'] as String?) ?? '';
+                        final experience = (p['experience'] as String?) ?? '';
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.place,
+                                    size: 16, color: Colors.grey),
+                                const SizedBox(width: 6),
+                                Text(_areaName(areaCode),
+                                    style: const TextStyle(fontSize: 13)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            if (subjects.isNotEmpty) ...[
+                              const Text('Subjects',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: subjects
+                                    .map((s) => Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey
+                                                .withValues(alpha: 0.1),
+                                            borderRadius:
+                                                BorderRadius.circular(6),
+                                          ),
+                                          child: Text(_subjectName(s),
+                                              style: const TextStyle(
+                                                  fontSize: 12)),
+                                        ))
+                                    .toList(),
+                              ),
+                              const SizedBox(height: 10),
+                            ],
+                            if (about.isNotEmpty) ...[
+                              const Text('About',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 4),
+                              Text(about, style: const TextStyle(fontSize: 13)),
+                              const SizedBox(height: 10),
+                            ],
+                            if (qualifications.isNotEmpty) ...[
+                              const Text('Qualifications',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 4),
+                              Text(qualifications,
+                                  style: const TextStyle(fontSize: 13)),
+                              const SizedBox(height: 10),
+                            ],
+                            if (experience.isNotEmpty) ...[
+                              const Text('Experience',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 4),
+                              Text(experience,
+                                  style: const TextStyle(fontSize: 13)),
+                              const SizedBox(height: 10),
+                            ],
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    const Text('Recent Reviews',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: FirebaseFirestore.instance
+                          .collection('tutor_profiles')
+                          .doc(tutorId)
+                          .collection('ratings')
+                          .orderBy('updatedAt', descending: true)
+                          .limit(10)
+                          .snapshots(),
+                      builder: (context, snap) {
+                        final docs = snap.data?.docs ?? [];
+                        if (docs.isEmpty) {
+                          return const Text('No reviews yet.');
+                        }
+                        return Column(
+                          children: docs.map((d) {
+                            final r = d.data();
+                            final rating = (r['rating'] as num?)?.toInt() ?? 0;
+                            final review = (r['review'] as String?) ?? '';
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.04),
+                                    blurRadius: 3,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: List.generate(5, (i) {
+                                      final filled = rating >= i + 1;
+                                      return Icon(
+                                        filled ? Icons.star : Icons.star_border,
+                                        size: 16,
+                                        color: filled
+                                            ? AppTheme.brandPrimary
+                                            : Colors.grey,
+                                      );
+                                    }),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                        review.isEmpty ? 'No comment' : review,
+                                        style: const TextStyle(fontSize: 13)),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -254,6 +480,42 @@ class StudentClassDetailsPage extends StatelessWidget {
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(label, style: TextStyle(fontSize: 11, color: color)),
+    );
+  }
+}
+
+class _TutorRatingSummary extends StatelessWidget {
+  final String tutorId;
+  const _TutorRatingSummary({required this.tutorId});
+
+  @override
+  Widget build(BuildContext context) {
+    final ratingsRef = FirebaseFirestore.instance
+        .collection('tutor_profiles')
+        .doc(tutorId)
+        .collection('ratings');
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: ratingsRef.snapshots(),
+      builder: (context, snap) {
+        final docs = snap.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return const Text('No ratings');
+        }
+        double avg = 0;
+        for (final d in docs) {
+          final r = (d.data()['rating'] as num?)?.toDouble() ?? 0;
+          avg += r;
+        }
+        avg = avg / docs.length;
+        return Row(
+          children: [
+            const Icon(Icons.star, size: 16, color: AppTheme.brandPrimary),
+            const SizedBox(width: 4),
+            Text('${avg.toStringAsFixed(1)} (${docs.length})',
+                style: const TextStyle(fontSize: 12)),
+          ],
+        );
+      },
     );
   }
 }

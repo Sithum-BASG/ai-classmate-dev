@@ -95,7 +95,20 @@ class _TutorRegisterPageState extends State<TutorRegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Create Tutor Account')),
+      appBar: AppBar(
+        title: const Text('Create Tutor Account'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => context.go('/tutor/auth/login'),
+            child: Text('Login',
+                style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+          )
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Form(

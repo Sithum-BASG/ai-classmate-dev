@@ -71,6 +71,32 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // TUTOR RATINGS: tutor_profiles/{tutorId}/ratings/{ratingId}
+    // Students can create/update one rating per enrollment for a tutor.
+    // ratingId should be the enrollmentId to enforce uniqueness per enrollment.
+    match /tutor_profiles/{tutorId}/ratings/{ratingId} {
+      // Ratings are public for transparency
+      allow read: if true;
+
+      // Create allowed by the enrollment owner (ratingId == enrollmentId) for the correct tutor
+      allow create: if signedIn()
+                    && (request.resource.data.rating is number)
+                    && request.resource.data.rating >= 1
+                    && request.resource.data.rating <= 5
+                    && getEnrollment(ratingId).exists()
+                    && getEnrollment(ratingId).data.studentId == uid()
+                    && getClass(getEnrollment(ratingId).data.classId).data.tutorId == tutorId;
+
+      // Allow updates by the same enrollment owner for the same tutor
+      allow update: if signedIn()
+                    && getEnrollment(ratingId).exists()
+                    && getEnrollment(ratingId).data.studentId == uid()
+                    && getClass(getEnrollment(ratingId).data.classId).data.tutorId == tutorId;
+
+      // Deletion not allowed from client for auditability
+      allow delete: if false;
+    }
+
     // CLASSES: classes/{classId}
     // Students can read published; tutors can read their own; admins can read all
     // Only admins (or server via Admin SDK) may publish/modify status
@@ -100,18 +126,21 @@ service cloud.firestore {
       match /announcements/{announcementId} {
         allow read: if isAdmin()
                     || classIsPublished(classId)
-                    || (isTutor() && getClass(classId).data.tutorId == uid());
+                    || (signedIn() && getClass(classId).data.tutorId == uid());
+        // Allow the class owner tutor to manage announcements regardless of role claims
         allow create, update, delete: if isAdmin()
-                                      || (isTutor() && getClass(classId).data.tutorId == uid());
+                                      || (signedIn() && getClass(classId).data.tutorId == uid());
       }
 
       // Class materials metadata subcollection (for Storage files)
       match /materials/{materialId} {
+        // Tutors (owner) or public if class is published
         allow read: if isAdmin()
                     || classIsPublished(classId)
-                    || (isTutor() && getClass(classId).data.tutorId == uid());
+                    || (signedIn() && getClass(classId).data.tutorId == uid());
+        // Owner tutor can create/update/delete without relying on custom claims
         allow create, update, delete: if isAdmin()
-                                      || (isTutor() && tutorApproved() && getClass(classId).data.tutorId == uid());
+                                      || (signedIn() && getClass(classId).data.tutorId == uid());
       }
     }
 

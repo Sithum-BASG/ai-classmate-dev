@@ -123,14 +123,28 @@ class _MessagesPageState extends State<MessagesPage> {
                       ),
                     ),
                   ),
-                  title: Text(
-                    peerId,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
+                  title: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                    future: FirebaseFirestore.instance
+                        .collection('tutor_profiles')
+                        .doc(peerId)
+                        .get(),
+                    builder: (context, nameSnap) {
+                      String display = peerId;
+                      final t = nameSnap.data?.data();
+                      if (t != null &&
+                          (t['full_name'] as String?)?.isNotEmpty == true) {
+                        display = t['full_name'] as String;
+                      }
+                      return Text(
+                        display,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      );
+                    },
                   ),
                   subtitle: Padding(
                     padding: const EdgeInsets.only(top: 4),

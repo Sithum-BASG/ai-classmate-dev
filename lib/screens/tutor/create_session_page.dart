@@ -26,6 +26,10 @@ class _CreateSessionPageState extends State<CreateSessionPage> {
   bool _submitting = false;
   bool _loadingExisting = false;
 
+  // Weekly recurrence
+  bool _repeatWeekly = false;
+  int? _weeklyWeekday; // 1=Mon .. 7=Sun (DateTime weekday)
+
   bool get isEditing => widget.sessionId != null;
 
   @override
@@ -132,7 +136,7 @@ class _CreateSessionPageState extends State<CreateSessionPage> {
   }
 
   Future<void> _submit() async {
-    if (_selectedDate == null) {
+    if (!_repeatWeekly && _selectedDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please choose a date')),
       );
@@ -164,41 +168,83 @@ class _CreateSessionPageState extends State<CreateSessionPage> {
     try {
       // Ensure latest custom claims (role/tutorApproved) after approval
       await FirebaseAuth.instance.currentUser?.getIdToken(true);
-
-      final startDateTime = DateTime(
-        _selectedDate!.year,
-        _selectedDate!.month,
-        _selectedDate!.day,
-        _selectedStartTime!.hour,
-        _selectedStartTime!.minute,
-      );
-      final endDateTime = DateTime(
-        _selectedDate!.year,
-        _selectedDate!.month,
-        _selectedDate!.day,
-        _selectedEndTime!.hour,
-        _selectedEndTime!.minute,
-      );
       final callable =
           FirebaseFunctions.instanceFor(region: BackendConfig.firebaseRegion)
               .httpsCallable(BackendConfig.fnCreateOrUpdateSession);
-      await callable.call({
-        'classId': widget.classId,
-        if (isEditing) 'sessionId': widget.sessionId,
-        'startMs': startDateTime.millisecondsSinceEpoch,
-        'endMs': endDateTime.millisecondsSinceEpoch,
-        if (_labelController.text.trim().isNotEmpty)
-          'label': _labelController.text.trim(),
-        if (_venueController.text.trim().isNotEmpty)
-          'venue': _venueController.text.trim(),
-      });
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(isEditing ? 'Session updated' : 'Session created')),
-      );
-      context.pop();
+      if (!_repeatWeekly || isEditing) {
+        // Single occurrence (or editing existing)
+        final baseDate = _selectedDate ?? DateTime.now();
+        final startDateTime = DateTime(
+          baseDate.year,
+          baseDate.month,
+          baseDate.day,
+          _selectedStartTime!.hour,
+          _selectedStartTime!.minute,
+        );
+        final endDateTime = DateTime(
+          baseDate.year,
+          baseDate.month,
+          baseDate.day,
+          _selectedEndTime!.hour,
+          _selectedEndTime!.minute,
+        );
+        await callable.call({
+          'classId': widget.classId,
+          if (isEditing) 'sessionId': widget.sessionId,
+          'startMs': startDateTime.millisecondsSinceEpoch,
+          'endMs': endDateTime.millisecondsSinceEpoch,
+          if (_labelController.text.trim().isNotEmpty)
+            'label': _labelController.text.trim(),
+          if (_venueController.text.trim().isNotEmpty)
+            'venue': _venueController.text.trim(),
+        });
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(isEditing ? 'Session updated' : 'Session created')),
+        );
+        context.pop();
+      } else {
+        // Weekly recurrence: only create the next upcoming session.
+        if (_weeklyWeekday == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please choose a weekday')),
+          );
+          return;
+        }
+        final anchor = _selectedDate ?? DateTime.now();
+        final firstDate = _nextOnOrAfter(anchor, _weeklyWeekday!);
+        final startDateTime = DateTime(
+          firstDate.year,
+          firstDate.month,
+          firstDate.day,
+          _selectedStartTime!.hour,
+          _selectedStartTime!.minute,
+        );
+        final endDateTime = DateTime(
+          firstDate.year,
+          firstDate.month,
+          firstDate.day,
+          _selectedEndTime!.hour,
+          _selectedEndTime!.minute,
+        );
+        await callable.call({
+          'classId': widget.classId,
+          'startMs': startDateTime.millisecondsSinceEpoch,
+          'endMs': endDateTime.millisecondsSinceEpoch,
+          if (_labelController.text.trim().isNotEmpty)
+            'label': _labelController.text.trim(),
+          if (_venueController.text.trim().isNotEmpty)
+            'venue': _venueController.text.trim(),
+          'repeatWeekly': true,
+          'weekday': _weeklyWeekday,
+        });
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Next weekly session scheduled')));
+        context.pop();
+      }
     } on FirebaseFunctionsException catch (e) {
       String message;
       switch (e.code) {
@@ -305,7 +351,9 @@ class _CreateSessionPageState extends State<CreateSessionPage> {
                           const SizedBox(height: 16),
                           ListTile(
                             contentPadding: EdgeInsets.zero,
-                            title: const Text('Date'),
+                            title: Text(_repeatWeekly
+                                ? 'Start from (first week)'
+                                : 'Date'),
                             subtitle: Text(
                               _selectedDate == null
                                   ? 'Choose date'
@@ -318,6 +366,51 @@ class _CreateSessionPageState extends State<CreateSessionPage> {
                               label: const Text('Pick'),
                             ),
                           ),
+                          if (!isEditing) ...[
+                            const SizedBox(height: 8),
+                            SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              value: _repeatWeekly,
+                              title:
+                                  const Text('Repeat weekly (same day/time)'),
+                              onChanged: (v) =>
+                                  setState(() => _repeatWeekly = v),
+                            ),
+                            if (_repeatWeekly) ...[
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<int>(
+                                value: _weeklyWeekday,
+                                decoration: const InputDecoration(
+                                  labelText: 'Weekday',
+                                  border: OutlineInputBorder(),
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                      value: 1, child: Text('Monday')),
+                                  DropdownMenuItem(
+                                      value: 2, child: Text('Tuesday')),
+                                  DropdownMenuItem(
+                                      value: 3, child: Text('Wednesday')),
+                                  DropdownMenuItem(
+                                      value: 4, child: Text('Thursday')),
+                                  DropdownMenuItem(
+                                      value: 5, child: Text('Friday')),
+                                  DropdownMenuItem(
+                                      value: 6, child: Text('Saturday')),
+                                  DropdownMenuItem(
+                                      value: 7, child: Text('Sunday')),
+                                ],
+                                onChanged: (v) =>
+                                    setState(() => _weeklyWeekday = v),
+                                validator: (v) {
+                                  if (_repeatWeekly && v == null)
+                                    return 'Select weekday';
+                                  return null;
+                                },
+                              ),
+                              // repeats until end of year; no weeks input needed
+                            ],
+                          ],
                           const SizedBox(height: 12),
                           ListTile(
                             contentPadding: EdgeInsets.zero,
@@ -388,5 +481,12 @@ class _CreateSessionPageState extends State<CreateSessionPage> {
     final minute = t.minute.toString().padLeft(2, '0');
     final ampm = t.hour >= 12 ? 'PM' : 'AM';
     return '$hour12:$minute $ampm';
+  }
+
+  DateTime _nextOnOrAfter(DateTime anchor, int weekday) {
+    // DateTime.weekday: Mon=1..Sun=7
+    final d = DateTime(anchor.year, anchor.month, anchor.day);
+    int diff = (weekday - d.weekday) % 7;
+    return d.add(Duration(days: diff));
   }
 }

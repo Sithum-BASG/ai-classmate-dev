@@ -13,11 +13,12 @@ class TutorDashboardPage extends StatefulWidget {
 
 class _TutorDashboardPageState extends State<TutorDashboardPage> {
   int _selectedIndex = 0;
-  final String _tutorName = "Mr. Kamal Silva";
-  final int _activeStudents = 5;
-  final double _monthlyIncome = 48000;
+  String _tutorName = 'Tutor';
+  int _activeStudents = 0;
+  double _monthlyIncome = 0;
   final DateTime _nextPaymentDate = DateTime(2025, 1, 15);
   Future<QuerySnapshot<Map<String, dynamic>>>? _myClassesFuture;
+  bool _metricsLoaded = false;
 
   // Removed mock _todaySchedule in favor of live Firestore data
 
@@ -77,6 +78,11 @@ class _TutorDashboardPageState extends State<TutorDashboardPage> {
             ),
           );
         }
+        // Load metrics once after approval
+        if (!_metricsLoaded) {
+          _metricsLoaded = true;
+          _loadHeaderMetrics();
+        }
         return _approvedDashboard(context);
       },
     );
@@ -118,6 +124,58 @@ class _TutorDashboardPageState extends State<TutorDashboardPage> {
         .where('status', whereIn: ['draft', 'published']).get();
   }
 
+  Future<void> _loadHeaderMetrics() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      // Tutor name from profile or auth
+      String name = user.displayName ?? '';
+      final prof = await FirebaseFirestore.instance
+          .collection('tutor_profiles')
+          .doc(user.uid)
+          .get();
+      final pdata = prof.data() ?? <String, dynamic>{};
+      if (name.isEmpty) name = (pdata['full_name'] as String?) ?? '';
+
+      // Students: total count across active/pending enrollments in this tutor's published classes
+      final classesSnap = await FirebaseFirestore.instance
+          .collection('classes')
+          .where('tutorId', isEqualTo: user.uid)
+          .where('status', isEqualTo: 'published')
+          .get();
+      final classDocs = classesSnap.docs;
+      final classIds = classDocs.map((d) => d.id).toList();
+      int totalStudents = 0;
+      for (final cid in classIds) {
+        final enrSnap = await FirebaseFirestore.instance
+            .collection('enrollments')
+            .where('classId', isEqualTo: cid)
+            .where('status', whereIn: ['active', 'pending']).get();
+        totalStudents += enrSnap.docs.length;
+      }
+
+      // Income: per requirement, compute as students × class fee (price) summed across classes
+      double income = 0;
+      for (final d in classDocs) {
+        final price = (d.data()['price'] as num?)?.toDouble() ?? 0.0;
+        final enrSnap = await FirebaseFirestore.instance
+            .collection('enrollments')
+            .where('classId', isEqualTo: d.id)
+            .where('status', whereIn: ['active', 'pending']).get();
+        income += (enrSnap.docs.length * price);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _tutorName = name.isEmpty ? 'Tutor' : name;
+        _activeStudents = totalStudents;
+        _monthlyIncome = income;
+      });
+    } catch (_) {
+      // leave defaults
+    }
+  }
+
   Future<List<Map<String, dynamic>>> _fetchTodaySessions(
       Map<String, Map<String, dynamic>> classById) async {
     final publishedIds = classById.entries
@@ -140,6 +198,15 @@ class _TutorDashboardPageState extends State<TutorDashboardPage> {
           .where('start_time', isGreaterThanOrEqualTo: start)
           .where('start_time', isLessThan: end)
           .get();
+      // Compute live student count for this class (active or pending enrollments)
+      int liveStudents = 0;
+      try {
+        final enrSnap = await FirebaseFirestore.instance
+            .collection('enrollments')
+            .where('classId', isEqualTo: classId)
+            .where('status', whereIn: ['active', 'pending']).get();
+        liveStudents = enrSnap.docs.length;
+      } catch (_) {}
       for (final d in snap.docs) {
         final s = d.data();
         final ts = s['start_time'];
@@ -152,7 +219,7 @@ class _TutorDashboardPageState extends State<TutorDashboardPage> {
           'start': startDt,
           'name': (c['name'] as String?) ?? 'Class',
           'type': (c['type'] as String?) ?? 'Group',
-          'students': (c['enrolled_count'] as num?)?.toInt() ?? 0,
+          'students': liveStudents,
         });
       }
     }
@@ -241,7 +308,7 @@ class _TutorDashboardPageState extends State<TutorDashboardPage> {
                     Expanded(
                       child: _buildStatCard(
                         Icons.attach_money,
-                        'LKR ${(_monthlyIncome / 1000).toStringAsFixed(0)}K',
+                        _formatCurrency(_monthlyIncome),
                         'Monthly Income',
                         Colors.green,
                       ),
@@ -569,5 +636,15 @@ class _TutorDashboardPageState extends State<TutorDashboardPage> {
       default:
         return Colors.grey;
     }
+  }
+
+  String _formatCurrency(double amount) {
+    if (amount >= 1000000) {
+      return 'LKR ${(amount / 1000000).toStringAsFixed(1)}M';
+    }
+    if (amount >= 1000) {
+      return 'LKR ${(amount / 1000).toStringAsFixed(0)}K';
+    }
+    return 'LKR ${amount.toStringAsFixed(0)}';
   }
 }

@@ -154,10 +154,8 @@ class _TutorProfilePageState extends State<TutorProfilePage> {
     final subjects = _subjectsLabel(data['subjects_taught'] as List?);
     final areaName = _areaNameForCode(data['area_code'] as String?);
     final status = (data['status'] as String?) ?? 'pending';
-    final rating =
-        (data['rating'] is num) ? (data['rating'] as num).toDouble() : 0.0;
-    final reviews =
-        (data['reviews'] is num) ? (data['reviews'] as num).toInt() : 0;
+    // Compute rating live from ratings subcollection
+    final String tutorId = user.uid;
     final experience = (data['experience'] as String?) ?? '-';
     final qualifications = (data['qualifications'] as String?) ?? '-';
     final about = (data['about'] as String?) ?? '-';
@@ -265,22 +263,40 @@ class _TutorProfilePageState extends State<TutorProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ...List.generate(5, (index) {
-                      return Icon(
-                        index < rating.floor() ? Icons.star : Icons.star_border,
-                        size: 20,
-                        color: Colors.amber,
-                      );
-                    }),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${rating.toStringAsFixed(1)} ($reviews reviews)',
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                  ],
+                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collection('tutor_profiles')
+                      .doc(tutorId)
+                      .collection('ratings')
+                      .snapshots(),
+                  builder: (context, snap) {
+                    final docs = snap.data?.docs ?? [];
+                    double avg = 0.0;
+                    for (final d in docs) {
+                      avg += (d.data()['rating'] as num?)?.toDouble() ?? 0;
+                    }
+                    final count = docs.length;
+                    avg = count == 0 ? 0.0 : avg / count;
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ...List.generate(5, (index) {
+                          return Icon(
+                            index < avg.floor()
+                                ? Icons.star
+                                : Icons.star_border,
+                            size: 20,
+                            color: Colors.amber,
+                          );
+                        }),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${avg.toStringAsFixed(1)} ($count reviews)',
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton.icon(

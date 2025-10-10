@@ -80,8 +80,15 @@ class _RegisterPageState extends State<RegisterPage> {
         title: const Text('Create Account'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/auth'),
+          onPressed: () => context.go('/'),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => context.go('/auth/login'),
+            child: const Text('Login',
+                style: TextStyle(color: AppTheme.brandPrimary)),
+          )
+        ],
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.symmetric(

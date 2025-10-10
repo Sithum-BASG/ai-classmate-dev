@@ -39,10 +39,13 @@ import '../screens/tutor/tutor_session_details_page.dart';
 import '../screens/tutor/tutor_announcements_page.dart';
 import '../screens/student_class_details_page.dart';
 import '../screens/student_enrollment_details_page.dart';
+import '../screens/student_write_review_page.dart';
 import '../screens/my_schedule_page.dart';
 import '../screens/notifications_page.dart';
 import '../screens/settings_page.dart';
 import '../screens/help_support_page.dart';
+import '../screens/tutor/tutor_reviews_page.dart';
+import '../screens/material_viewer_page.dart';
 
 final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -77,6 +80,14 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/',
       builder: (context, state) => const HomePage(),
+    ),
+    GoRoute(
+      path: '/material/view',
+      builder: (context, state) {
+        final title = state.uri.queryParameters['name'] ?? 'Material';
+        final url = state.uri.queryParameters['url'] ?? '';
+        return MaterialViewerPage(title: title, url: url);
+      },
     ),
 
     // Auth Routes
@@ -176,6 +187,13 @@ final GoRouter appRouter = GoRouter(
         return StudentEnrollmentDetailsPage(enrollmentId: enrollmentId);
       },
     ),
+    GoRoute(
+      path: '/enrollment/:id/review',
+      builder: (context, state) {
+        final enrollmentId = state.pathParameters['id'] ?? '';
+        return StudentWriteReviewPage(enrollmentId: enrollmentId);
+      },
+    ),
 
     // Tutor Routes
     GoRoute(
@@ -220,6 +238,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/tutor/subscription',
       builder: (context, state) => const TutorSubscriptionPage(),
+    ),
+    GoRoute(
+      path: '/tutor/reviews',
+      builder: (context, state) => const TutorReviewsPage(),
     ),
     GoRoute(
       path: '/tutor/class/new',

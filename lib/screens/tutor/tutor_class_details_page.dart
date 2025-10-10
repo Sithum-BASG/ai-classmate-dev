@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/functions_service.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_picker/file_picker.dart';
+// Fallback: open via Navigator to webview-less browser using canLaunchUrl
+import 'package:url_launcher/url_launcher.dart' as launcher;
 import '../../theme.dart';
 
 class TutorClassDetailsPage extends StatefulWidget {
@@ -188,15 +193,27 @@ class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildInfoColumn(
-                              'Students', '$students/$maxStudents'),
-                          _buildInfoColumn('Price', 'Rs. $price'),
-                          _buildInfoColumn('Total Income', 'Rs. $totalIncome',
-                              isHighlighted: true),
-                        ],
+                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: FirebaseFirestore.instance
+                            .collection('enrollments')
+                            .where('classId', isEqualTo: widget.classId)
+                            .where('status',
+                                whereIn: ['active', 'pending']).snapshots(),
+                        builder: (context, enrSnap) {
+                          final liveStudents = (enrSnap.data?.docs.length ?? 0);
+                          final liveIncome = liveStudents * price;
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildInfoColumn('Students',
+                                  '${liveStudents == 0 ? students : liveStudents}/$maxStudents'),
+                              _buildInfoColumn('Price', 'Rs. $price'),
+                              _buildInfoColumn('Total Income',
+                                  'Rs. ${liveIncome == 0 ? totalIncome : liveIncome}',
+                                  isHighlighted: true),
+                            ],
+                          );
+                        },
                       ),
                       const SizedBox(height: 20),
                       Row(
@@ -318,7 +335,7 @@ class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
                           final ed = e.data();
                           final enrollmentId =
                               (ed['enrollmentId'] as String?) ?? e.id;
-                          final status = (ed['status'] as String?) ?? 'active';
+                          // status kept in UI via badge below
                           final name =
                               (ed['studentName'] as String?) ?? 'Student';
                           final initials = name.isNotEmpty
@@ -329,11 +346,7 @@ class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
                                   .join()
                                   .toUpperCase()
                               : 'ST';
-                          final statusColor = status == 'active'
-                              ? Colors.green
-                              : (status == 'pending'
-                                  ? Colors.orange
-                                  : Colors.grey);
+                          // derive but not used further
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),
                             padding: const EdgeInsets.all(12),
@@ -414,6 +427,8 @@ class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
             ),
 
             const SizedBox(height: 20),
+            // Materials uploader (tutor only)
+            _MaterialsSection(classId: widget.classId),
 
             // Action Buttons
             Row(
@@ -734,6 +749,209 @@ class _TutorClassDetailsPageState extends State<TutorClassDetailsPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _MaterialsSection extends StatefulWidget {
+  final String classId;
+  const _MaterialsSection({required this.classId});
+
+  @override
+  State<_MaterialsSection> createState() => _MaterialsSectionState();
+}
+
+class _MaterialsSectionState extends State<_MaterialsSection> {
+  bool _uploading = false;
+  bool _allowDownload = true;
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> get _materialsStream =>
+      FirebaseFirestore.instance
+          .collection('classes')
+          .doc(widget.classId)
+          .collection('materials')
+          .orderBy('created_at', descending: true)
+          .snapshots();
+
+  Future<void> _pickAndUpload() async {
+    try {
+      final res = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+        withData: true,
+        type: FileType.any,
+      );
+      if (res == null || res.files.isEmpty) return;
+      final file = res.files.single;
+      setState(() => _uploading = true);
+
+      final filename = file.name;
+      final materialId = FirebaseFirestore.instance
+          .collection('classes')
+          .doc(widget.classId)
+          .collection('materials')
+          .doc()
+          .id;
+
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('class_materials/${widget.classId}/$materialId/$filename');
+      if (file.bytes != null) {
+        await storageRef.putData(
+          file.bytes!,
+          SettableMetadata(contentType: 'application/octet-stream'),
+        );
+      } else if (file.path != null) {
+        await storageRef.putFile(File(file.path!),
+            SettableMetadata(contentType: 'application/octet-stream'));
+      } else {
+        throw Exception('No file data');
+      }
+      final url = await storageRef.getDownloadURL();
+
+      await FirebaseFirestore.instance
+          .collection('classes')
+          .doc(widget.classId)
+          .collection('materials')
+          .doc(materialId)
+          .set({
+        'name': filename,
+        'fileUrl': url,
+        'allowDownload': _allowDownload,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(builder: (context, constraints) {
+            final bool isNarrow = constraints.maxWidth < 360;
+            final Widget controls = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Allow download'),
+                const SizedBox(width: 6),
+                Switch(
+                  value: _allowDownload,
+                  onChanged: (v) => setState(() => _allowDownload = v),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _uploading ? null : _pickAndUpload,
+                  icon: const Icon(Icons.upload),
+                  label: Text(_uploading ? 'Uploading...' : 'Upload'),
+                )
+              ],
+            );
+            if (isNarrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Learning Materials',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Align(alignment: Alignment.centerRight, child: controls),
+                ],
+              );
+            }
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Learning Materials',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                controls,
+              ],
+            );
+          }),
+          const SizedBox(height: 12),
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _materialsStream,
+            builder: (context, snap) {
+              final items = snap.data?.docs ?? [];
+              if (items.isEmpty) {
+                return const Text('No materials uploaded yet.');
+              }
+              return Column(
+                children: items.map((d) {
+                  final m = d.data();
+                  final name = (m['name'] as String?) ?? 'Material';
+                  final allow = (m['allowDownload'] as bool?) ?? false;
+                  final url = (m['fileUrl'] as String?) ?? '';
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.insert_drive_file),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600),
+                              ),
+                              Text(
+                                allow ? 'Download allowed' : 'View only',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: allow ? 'Download' : 'View',
+                          icon: Icon(
+                              allow ? Icons.download : Icons.remove_red_eye),
+                          onPressed: url.isEmpty
+                              ? null
+                              : () async {
+                                  final uri = Uri.parse(url);
+                                  if (await launcher.canLaunchUrl(uri)) {
+                                    await launcher.launchUrl(uri);
+                                  }
+                                },
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

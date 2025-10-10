@@ -242,6 +242,8 @@ export const createOrUpdateSession = functions
     const endMs = (data?.endMs as number | undefined);
     const label = (data?.label as string) || undefined;
     const venue = (data?.venue as string) || undefined;
+    const repeatWeekly = Boolean(data?.repeatWeekly);
+    const weekday = (data?.weekday as number | undefined);
 
     if (!classId || (!startTimeIso && !startMs) || (!endTimeIso && !endMs)) {
       throw new functions.https.HttpsError('invalid-argument', 'classId and start/end time required');
@@ -298,6 +300,8 @@ export const createOrUpdateSession = functions
     };
     if (label) payload.label = label;
     if (venue) payload.venue = venue;
+    if (repeatWeekly) payload.repeatWeekly = true;
+    if (repeatWeekly && typeof weekday === 'number') payload.weekday = weekday;
 
     if (sessionId) {
       await db.collection('classes').doc(classId).collection('sessions').doc(sessionId).set(payload, { merge: true });
@@ -308,6 +312,77 @@ export const createOrUpdateSession = functions
       created_at: new Date(),
     });
     return { ok: true, sessionId: ref.id };
+  });
+
+// Scheduled job: create next weekly session for sessions with repeatWeekly=true once past
+export const rollForwardWeeklySessions = functions
+  .region(REGION)
+  .pubsub.schedule('every 12 hours')
+  .onRun(async () => {
+    const db = getFirestore();
+    const now = new Date();
+    // Admin privileges; read all sessions that are recurring
+    const qs = await db.collectionGroup('sessions').where('repeatWeekly', '==', true).get();
+    const byClass: Record<string, any[]> = {};
+    for (const d of qs.docs) {
+      const s = d.data() as any;
+      const startRaw = s.start_time || s.startTime;
+      const endRaw = s.end_time || s.endTime;
+      if (!startRaw || !endRaw) continue;
+      const start: Date = startRaw.toDate ? startRaw.toDate() : new Date(startRaw);
+      const end: Date = endRaw.toDate ? endRaw.toDate() : new Date(endRaw);
+      if (end > now) continue; // only roll forward after session ends
+      const parent = (d.ref.parent.parent); // classes/{classId}
+      if (!parent) continue;
+      const classId = parent.id;
+      if (!byClass[classId]) byClass[classId] = [];
+      byClass[classId].push({ id: d.id, ref: d.ref, start, end, data: s });
+    }
+
+    for (const [classId, sessions] of Object.entries(byClass)) {
+      // For each recurring session, attempt to create the immediate next week if not present
+      for (const s of sessions) {
+        const next = new Date(s.start.getTime());
+        next.setDate(next.getDate() + 7);
+        const yearEnd = new Date(next.getFullYear(), 11, 31, 23, 59, 59, 999);
+        if (next > yearEnd) continue;
+        const nextEnd = new Date(s.end.getTime());
+        nextEnd.setDate(nextEnd.getDate() + 7);
+
+        const classRef = db.collection('classes').doc(classId);
+        const sessionsRef = classRef.collection('sessions');
+        // idempotency: check if a session exists on that date with same start hour/min
+        const dayStart = new Date(next.getFullYear(), next.getMonth(), next.getDate());
+        const dayEnd = new Date(next.getFullYear(), next.getMonth(), next.getDate(), 23, 59, 59, 999);
+        const existing = await sessionsRef
+          .where('start_time', '>=', dayStart)
+          .where('start_time', '<=', dayEnd)
+          .get();
+        let found = false;
+        for (const e of existing.docs) {
+          const es = (e.data() as any).start_time;
+          if (!es) continue;
+          const est = es.toDate ? es.toDate() : new Date(es);
+          if (est.getHours() === next.getHours() && est.getMinutes() === next.getMinutes()) {
+            found = true;
+            break;
+          }
+        }
+        if (found) continue;
+
+        await sessionsRef.add({
+          start_time: next,
+          end_time: nextEnd,
+          classId,
+          label: s.data.label || null,
+          venue: s.data.venue || null,
+          repeatWeekly: true,
+          weekday: s.data.weekday || next.getDay(),
+          created_at: new Date(),
+        });
+      }
+    }
+    return null;
   });
 
 
