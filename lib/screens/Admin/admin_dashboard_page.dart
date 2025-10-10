@@ -3,8 +3,8 @@ import 'package:go_router/go_router.dart';
 import '../../theme.dart';
 import 'package:cloud_functions/cloud_functions.dart' as cloud_functions;
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'admin_tutor_approvals_page.dart';
-import 'admin_class_management_page.dart';
 import 'admin_payment_verification_page.dart';
 import 'admin_announcements_page.dart';
 import 'admin_analytics_page.dart';
@@ -262,7 +262,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             children: [
               _buildNavItem(Icons.dashboard, 'Dashboard', 0),
               _buildNavItem(Icons.how_to_reg, 'Tutor Approvals', 1),
-              _buildNavItem(Icons.class_, 'Class Management', 2),
+              // Removed Class Management nav per requirements
               _buildNavItem(Icons.payment, 'Payment Verification', 3),
               _buildNavItem(Icons.campaign, 'Announcements', 4),
               _buildNavItem(Icons.analytics, 'Analytics & Reports', 5),
@@ -320,7 +320,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       case 1:
         return 'Tutor Approvals';
       case 2:
-        return 'Class Management';
+        return 'Payment Verification';
       case 3:
         return 'Payment Verification';
       case 4:
@@ -345,7 +345,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       case 1:
         return const AdminTutorApprovalsPage();
       case 2:
-        return const AdminClassManagementPage();
+        return const AdminPaymentVerificationPage();
       case 3:
         return const AdminPaymentVerificationPage();
       case 4:
@@ -382,86 +382,97 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             crossAxisSpacing: 16,
             childAspectRatio: isMobile ? 1.2 : 1.5,
             children: [
-              _buildStatCard(
-                Icons.people_outline,
-                '247',
-                'Total Students',
-                AppTheme.brandPrimary,
+              FutureBuilder<int>(
+                future: _count(
+                    FirebaseFirestore.instance.collection('student_profiles')),
+                builder: (context, snap) {
+                  final v = (snap.data ?? 0).toString();
+                  return _buildStatCard(
+                    Icons.people_outline,
+                    v,
+                    'Total Students',
+                    AppTheme.brandPrimary,
+                  );
+                },
               ),
-              _buildStatCard(
-                Icons.school,
-                '38',
-                'Active Tutors',
-                AppTheme.brandSecondary,
+              FutureBuilder<int>(
+                future: _count(FirebaseFirestore.instance
+                    .collection('tutor_profiles')
+                    .where('status', isEqualTo: 'approved')),
+                builder: (context, snap) {
+                  final v = (snap.data ?? 0).toString();
+                  return _buildStatCard(
+                    Icons.school,
+                    v,
+                    'Active Tutors',
+                    AppTheme.brandSecondary,
+                  );
+                },
               ),
-              _buildStatCard(
-                Icons.book,
-                '145',
-                'Total Classes',
-                AppTheme.brandPrimaryDark,
+              FutureBuilder<int>(
+                future:
+                    _count(FirebaseFirestore.instance.collection('classes')),
+                builder: (context, snap) {
+                  final v = (snap.data ?? 0).toString();
+                  return _buildStatCard(
+                    Icons.book,
+                    v,
+                    'Total Classes',
+                    AppTheme.brandPrimaryDark,
+                  );
+                },
               ),
-              _buildStatCard(
-                Icons.attach_money,
-                'LKR 185K',
-                'Monthly Revenue',
-                AppTheme.brandSecondaryDark,
+              FutureBuilder<double>(
+                future: _monthlyRevenue(),
+                builder: (context, snap) {
+                  final amt = snap.data ?? 0.0;
+                  final v = 'LKR ${amt.toStringAsFixed(0)}';
+                  return _buildStatCard(
+                    Icons.attach_money,
+                    v,
+                    'Monthly Revenue',
+                    AppTheme.brandSecondaryDark,
+                  );
+                },
               ),
             ],
           ),
           const SizedBox(height: 24),
 
           // Pending Actions
-          if (!isMobile)
-            Row(
-              children: [
-                Expanded(
-                  child: _buildPendingCard(
-                    'Tutor Applications Pending',
-                    '2 new tutors waiting for approval',
-                    AppTheme.brandPrimary,
-                    () => setState(() => _selectedIndex = 1),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildPendingCard(
-                    'Classes Awaiting Approval',
-                    '2 classes need review and approval',
-                    AppTheme.brandSecondary,
-                    () => setState(() => _selectedIndex = 2),
-                  ),
-                ),
-              ],
-            )
-          else
-            Column(
-              children: [
-                _buildPendingCard(
-                  'Tutor Applications Pending',
-                  '2 new tutors waiting for approval',
-                  AppTheme.brandPrimary,
-                  () => setState(() => _selectedIndex = 1),
-                ),
-                const SizedBox(height: 12),
-                _buildPendingCard(
-                  'Classes Awaiting Approval',
-                  '2 classes need review and approval',
-                  AppTheme.brandSecondary,
-                  () => setState(() => _selectedIndex = 2),
-                ),
-              ],
-            ),
+          FutureBuilder<int>(
+            future: _count(FirebaseFirestore.instance
+                .collection('tutor_profiles')
+                .where('status', isEqualTo: 'pending')),
+            builder: (context, snap) {
+              final n = snap.data ?? 0;
+              return _buildPendingCard(
+                'Tutor Applications Pending',
+                '$n tutor${n == 1 ? '' : 's'} waiting for approval',
+                AppTheme.brandPrimary,
+                () => setState(() => _selectedIndex = 1),
+              );
+            },
+          ),
           const SizedBox(height: 16),
-          _buildPendingCard(
-            'Payment Verifications Pending',
-            '2 student payments need verification',
-            AppTheme.brandSecondaryDark,
-            () => setState(() => _selectedIndex = 3),
+          FutureBuilder<int>(
+            future: _count(FirebaseFirestore.instance
+                .collection('payments')
+                .where('verifyStatus', isEqualTo: 'pending')),
+            builder: (context, snap) {
+              final n = snap.data ?? 0;
+              return _buildPendingCard(
+                'Payment Verifications Pending',
+                '$n payment${n == 1 ? '' : 's'} need verification',
+                AppTheme.brandSecondaryDark,
+                () => setState(() => _selectedIndex = 3),
+              );
+            },
           ),
 
           const SizedBox(height: 24),
 
-          // Recent Activity
+          // Recent Activity (live payments feed)
           Container(
             padding: EdgeInsets.all(isMobile ? 16 : 20),
             decoration: BoxDecoration(
@@ -485,29 +496,58 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       ?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 20),
-                _buildActivityItem(
-                  'New tutor application',
-                  'Dr. Anoja Perera',
-                  '2 min ago',
-                  AppTheme.brandPrimary,
-                ),
-                _buildActivityItem(
-                  'Payment verified',
-                  'Student payment LKR 2,500',
-                  '15 min ago',
-                  AppTheme.brandSecondary,
-                ),
-                _buildActivityItem(
-                  'Class approved',
-                  'Physics A/L Group Class',
-                  '1 hour ago',
-                  AppTheme.brandPrimaryDark,
-                ),
-                _buildActivityItem(
-                  'Announcement sent',
-                  'Platform maintenance notice',
-                  '2 hours ago',
-                  AppTheme.brandSecondaryDark,
+                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collection('payments')
+                      .orderBy('paidAt', descending: true)
+                      .limit(5)
+                      .snapshots(),
+                  builder: (context, snap) {
+                    if (snap.hasError) {
+                      return Text('Failed to load activity: ${snap.error}');
+                    }
+                    final docs = snap.data?.docs ?? const [];
+                    if (docs.isEmpty) {
+                      return Text('No recent payments',
+                          style: TextStyle(color: AppTheme.mutedText));
+                    }
+                    return Column(
+                      children: docs.map((d) {
+                        final p = d.data();
+                        final status =
+                            (p['verifyStatus'] as String?) ?? 'pending';
+                        final whenTs = p['paidAt'] ?? p['createdAt'];
+                        String whenStr = '';
+                        if (whenTs is Timestamp)
+                          whenStr = whenTs.toDate().toString();
+                        final amount =
+                            (p['paidAmount'] ?? p['amountDue'] ?? 0).toString();
+                        final name = (p['studentName'] as String?) ??
+                            (p['studentId'] as String? ?? 'Student');
+                        String title;
+                        Color color;
+                        switch (status) {
+                          case 'verified':
+                            title = 'Payment verified';
+                            color = AppTheme.brandSecondary;
+                            break;
+                          case 'rejected':
+                            title = 'Payment rejected';
+                            color = Theme.of(context).colorScheme.error;
+                            break;
+                          default:
+                            title = 'Payment submitted';
+                            color = AppTheme.brandPrimary;
+                        }
+                        return _buildActivityItem(
+                          title,
+                          'LKR $amount • $name',
+                          whenStr,
+                          color,
+                        );
+                      }).toList(),
+                    );
+                  },
                 ),
               ],
             ),
@@ -515,6 +555,43 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         ],
       ),
     );
+  }
+
+  Future<int> _count(Query<Map<String, dynamic>> query) async {
+    try {
+      final agg = await query.count().get();
+      return agg.count ?? 0;
+    } catch (_) {
+      try {
+        final snap = await query.limit(1000).get();
+        return snap.size;
+      } catch (_) {
+        return 0;
+      }
+    }
+  }
+
+  Future<double> _monthlyRevenue() async {
+    try {
+      final now = DateTime.now();
+      final start = DateTime(now.year, now.month, 1);
+      final end = DateTime(now.year, now.month + 1, 1);
+      final qs = await FirebaseFirestore.instance
+          .collection('payments')
+          .where('verifyStatus', isEqualTo: 'verified')
+          .where('paidAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .where('paidAt', isLessThan: Timestamp.fromDate(end))
+          .get();
+      double sum = 0;
+      for (final d in qs.docs) {
+        final data = d.data();
+        final num? v = data['paidAmount'] as num? ?? data['amountDue'] as num?;
+        if (v != null) sum += v.toDouble();
+      }
+      return sum;
+    } catch (_) {
+      return 0;
+    }
   }
 
   Widget _buildStatCard(

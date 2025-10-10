@@ -16,13 +16,31 @@ export const sendMessage = functions
       throw new functions.https.HttpsError('invalid-argument', 'toUserId and text required');
     }
     const db = getFirestore();
-    const msgRef = db.collection('users').doc(toUserId).collection('messages').doc();
-    await msgRef.set({
-      messageId: msgRef.id,
-      from: context.auth.uid,
+    const fromUserId = context.auth.uid;
+
+    // Recipient copy
+    const recipRef = db.collection('users').doc(toUserId).collection('messages').doc();
+    const nowIso = new Date().toISOString();
+    await recipRef.set({
+      messageId: recipRef.id,
+      from: fromUserId,
+      to: toUserId,
+      peerId: fromUserId,
       text,
-      sentAt: new Date().toISOString(),
+      sentAt: nowIso,
       read: false
+    });
+
+    // Sender copy (for chat thread on sender side)
+    const senderRef = db.collection('users').doc(fromUserId).collection('messages').doc();
+    await senderRef.set({
+      messageId: senderRef.id,
+      from: fromUserId,
+      to: toUserId,
+      peerId: toUserId,
+      text,
+      sentAt: nowIso,
+      read: true
     });
     // Fire-and-forget FCM notification; ignore errors
     sendToUser(toUserId, 'New message', text).catch(() => undefined);

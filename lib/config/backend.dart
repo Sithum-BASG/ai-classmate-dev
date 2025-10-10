@@ -31,6 +31,10 @@ class BackendConfig {
   static const String fnGetRecommendationsRealtime =
       'getRecommendationsRealtime';
   static const String fnCreateOrUpdateSession = 'createOrUpdateSession';
+  static const String fnScheduleWeeklySessions = 'scheduleWeeklySessions';
+  static const String fnGetEnrollmentPaymentStatus =
+      'getEnrollmentPaymentStatus';
+  static const String fnChatbotReply = 'chatbotReply';
 
   // Helpers to build full HTTP URLs
   static String healthUrl({bool prod = false}) =>

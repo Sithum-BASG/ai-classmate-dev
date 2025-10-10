@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../theme.dart';
+import '../services/functions_service.dart';
 
 class ChatbotPage extends StatefulWidget {
   const ChatbotPage({super.key});
@@ -10,6 +12,7 @@ class ChatbotPage extends StatefulWidget {
 
 class _ChatbotPageState extends State<ChatbotPage> {
   final TextEditingController _messageController = TextEditingController();
+  final FunctionsService _fn = FunctionsService();
   final List<Map<String, dynamic>> _messages = [
     {
       'sender': 'bot',
@@ -18,37 +21,114 @@ class _ChatbotPageState extends State<ChatbotPage> {
       'time': '10:00 AM',
     },
   ];
+  bool _isSending = false;
+  final ScrollController _scrollController = ScrollController();
+  List<Map<String, String>> _hints = const [];
+  final List<String> _suggestions = const [
+    'How do I enroll?',
+    'Where is my payment status?',
+    'How do I message my tutor?',
+    'Show announcements'
+  ];
 
   @override
   void dispose() {
     _messageController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _sendMessage() {
-    if (_messageController.text.trim().isEmpty) return;
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent + 80,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
 
+  Future<void> _streamReply(String reply) async {
+    // Append reply text in small chunks for a simple streaming effect
+    final idx = _messages.lastIndexWhere((m) => m['sender'] == 'bot');
+    if (idx == -1) return;
+    const int chunk = 4;
+    for (int i = 0; i < reply.length; i += chunk) {
+      if (!mounted) return;
+      final part = reply.substring(i, (i + chunk).clamp(0, reply.length));
+      setState(() {
+        _messages[idx]['message'] =
+            (_messages[idx]['message'] as String) + part;
+      });
+      _scrollToBottom();
+      await Future.delayed(const Duration(milliseconds: 14));
+    }
+  }
+
+  Future<void> _sendWithText(String text) async {
+    _messageController.text = text;
+    await _sendMessage();
+  }
+
+  Future<void> _sendMessage() async {
+    if (_messageController.text.trim().isEmpty) return;
+    if (_isSending) return;
+    setState(() => _isSending = true);
+
+    final userText = _messageController.text;
+    FocusScope.of(context).unfocus();
     setState(() {
       _messages.add({
         'sender': 'user',
-        'message': _messageController.text,
+        'message': userText,
         'time': 'Now',
       });
-
-      // TODO: Send to AI and get response
-      Future.delayed(const Duration(seconds: 1), () {
-        setState(() {
-          _messages.add({
-            'sender': 'bot',
-            'message':
-                'I\'ll help you with that. Let me process your request...',
-            'time': 'Now',
-          });
-        });
+      _messages.add({
+        'sender': 'bot_typing',
+        'message': '...',
+        'time': 'Now',
       });
     });
+    _scrollToBottom();
 
     _messageController.clear();
+
+    try {
+      final result = await _fn.chatbotReply(userText);
+      final reply =
+          (result['reply'] as String?) ?? 'Sorry, I could not respond.';
+      if (!mounted) return;
+      setState(() {
+        // remove typing indicator and insert empty bot message for streaming
+        _messages.removeWhere((m) => m['sender'] == 'bot_typing');
+        _messages.add({'sender': 'bot', 'message': '', 'time': 'Now'});
+        final rawHints = (result['hints'] as List?) ?? const [];
+        _hints = rawHints
+            .whereType<Map>()
+            .map((m) => m.cast<String, dynamic>())
+            .map((m) => {
+                  'label': (m['label'] as String?) ?? 'Open',
+                  'route': (m['route'] as String?) ?? '/',
+                })
+            .toList();
+        _isSending = false;
+      });
+      _scrollToBottom();
+      await _streamReply(reply);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _messages.removeWhere((m) => m['sender'] == 'bot_typing');
+        _messages.add({
+          'sender': 'bot',
+          'message': 'Sorry, I had trouble replying. Please try again.',
+          'time': 'Now',
+        });
+        _isSending = false;
+      });
+    }
   }
 
   @override
@@ -58,8 +138,12 @@ class _ChatbotPageState extends State<ChatbotPage> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0.5,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppTheme.brandText),
+          onPressed: () => context.pop(),
+        ),
         title: const Text(
-          'AI Study Assistant',
+          'AI Assistant',
           style: TextStyle(
             color: AppTheme.brandText,
             fontSize: 18,
@@ -88,10 +172,12 @@ class _ChatbotPageState extends State<ChatbotPage> {
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
+              controller: _scrollController,
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final message = _messages[index];
-                final isBot = message['sender'] == 'bot';
+                final sender = (message['sender'] as String?) ?? 'bot';
+                final isBot = sender == 'bot' || sender == 'bot_typing';
 
                 return Align(
                   alignment:
@@ -117,7 +203,9 @@ class _ChatbotPageState extends State<ChatbotPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          message['message'],
+                          sender == 'bot_typing'
+                              ? 'Typing…'
+                              : message['message'],
                           style: TextStyle(
                             color: isBot ? AppTheme.brandText : Colors.white,
                             fontSize: 14,
@@ -138,6 +226,44 @@ class _ChatbotPageState extends State<ChatbotPage> {
               },
             ),
           ),
+          if (_hints.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: _hints
+                      .map((h) => ActionChip(
+                            label: Text(h['label'] ?? 'Open'),
+                            onPressed: () {
+                              final route = h['route'] ?? '/';
+                              context.go(route);
+                            },
+                          ))
+                      .toList(),
+                ),
+              ),
+            ),
+          if (_messages.length <= 2)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: _suggestions
+                      .map((s) => InputChip(
+                            label: Text(s),
+                            onPressed:
+                                _isSending ? null : () => _sendWithText(s),
+                          ))
+                      .toList(),
+                ),
+              ),
+            ),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -169,7 +295,9 @@ class _ChatbotPageState extends State<ChatbotPage> {
                         vertical: 12,
                       ),
                     ),
-                    onSubmitted: (_) => _sendMessage(),
+                    onSubmitted: (_) {
+                      if (!_isSending) _sendMessage();
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -180,7 +308,7 @@ class _ChatbotPageState extends State<ChatbotPage> {
                   ),
                   child: IconButton(
                     icon: const Icon(Icons.send, color: Colors.white),
-                    onPressed: _sendMessage,
+                    onPressed: _isSending ? null : _sendMessage,
                   ),
                 ),
               ],

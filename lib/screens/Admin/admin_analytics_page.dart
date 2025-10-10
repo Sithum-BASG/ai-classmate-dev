@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../config/subjects.dart';
 
 class AdminAnalyticsPage extends StatefulWidget {
   const AdminAnalyticsPage({super.key});
@@ -8,13 +10,7 @@ class AdminAnalyticsPage extends StatefulWidget {
 }
 
 class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
-  final Map<String, int> _subjectDistribution = {
-    'Mathematics': 45,
-    'Physics': 32,
-    'Chemistry': 28,
-    'Biology': 25,
-    'Combined Mathematics': 15,
-  };
+  Map<String, int> _subjectDistribution = <String, int>{};
 
   @override
   Widget build(BuildContext context) {
@@ -81,7 +77,7 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
               ),
             const SizedBox(height: 24),
 
-            // Growth Stats - Responsive Grid
+            // Key Metrics (live)
             LayoutBuilder(
               builder: (context, constraints) {
                 return GridView.count(
@@ -92,29 +88,45 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
                   crossAxisSpacing: 16,
                   childAspectRatio: isMobile ? 1.3 : 1.5,
                   children: [
-                    _buildGrowthCard(
-                      Icons.trending_up,
-                      '+12.5%',
-                      'Revenue Growth',
-                      Colors.green,
+                    FutureBuilder<int>(
+                      future: _count(FirebaseFirestore.instance
+                          .collection('student_profiles')),
+                      builder: (context, s) => _buildMetricCard(
+                        Icons.people,
+                        (s.data ?? 0).toString(),
+                        'Total Students',
+                        Colors.blue,
+                      ),
                     ),
-                    _buildGrowthCard(
-                      Icons.people,
-                      '+8.3%',
-                      'Student Growth',
-                      Colors.blue,
+                    FutureBuilder<int>(
+                      future: _count(FirebaseFirestore.instance
+                          .collection('tutor_profiles')
+                          .where('status', isEqualTo: 'approved')),
+                      builder: (context, s) => _buildMetricCard(
+                        Icons.school,
+                        (s.data ?? 0).toString(),
+                        'Active Tutors',
+                        Colors.green,
+                      ),
                     ),
-                    _buildGrowthCard(
-                      Icons.school,
-                      '+15.2%',
-                      'Tutor Growth',
-                      Colors.purple,
+                    FutureBuilder<int>(
+                      future: _count(
+                          FirebaseFirestore.instance.collection('classes')),
+                      builder: (context, s) => _buildMetricCard(
+                        Icons.book,
+                        (s.data ?? 0).toString(),
+                        'Total Classes',
+                        Colors.orange,
+                      ),
                     ),
-                    _buildGrowthCard(
-                      Icons.book,
-                      '+22.1%',
-                      'Class Growth',
-                      Colors.orange,
+                    FutureBuilder<int>(
+                      future: _monthlyVerifiedCount(),
+                      builder: (context, s) => _buildMetricCard(
+                        Icons.verified,
+                        (s.data ?? 0).toString(),
+                        'Verified Payments (month)',
+                        Colors.purple,
+                      ),
                     ),
                   ],
                 );
@@ -122,7 +134,7 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
             ),
             const SizedBox(height: 24),
 
-            // Subject Distribution
+            // Subject Distribution (live)
             Container(
               padding: EdgeInsets.all(isMobile ? 16 : 20),
               decoration: BoxDecoration(
@@ -135,32 +147,43 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
                   ),
                 ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Subject Distribution',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 20),
-                  ..._subjectDistribution.entries.map((entry) {
-                    final total =
-                        _subjectDistribution.values.reduce((a, b) => a + b);
-                    final percentage = (entry.value / total * 100).round();
-                    return _buildDistributionBar(
-                      entry.key,
-                      entry.value,
-                      percentage,
-                      _getSubjectColor(entry.key),
-                      isMobile,
-                    );
-                  }),
-                ],
+              child: FutureBuilder<Map<String, int>>(
+                future: _loadSubjectDistribution(),
+                builder: (context, s) {
+                  final data = s.data ?? _subjectDistribution;
+                  if (data.isEmpty) {
+                    return const Text('No class data');
+                  }
+                  final total = data.values.fold<int>(0, (a, b) => a + b);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Subject Distribution',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 20),
+                      ...data.entries.map((entry) {
+                        final percentage = total == 0
+                            ? 0
+                            : ((entry.value / total) * 100).round();
+                        return _buildDistributionBar(
+                          entry.key,
+                          entry.value,
+                          percentage,
+                          _getSubjectColor(entry.key),
+                          isMobile,
+                        );
+                      }),
+                    ],
+                  );
+                },
               ),
             ),
             const SizedBox(height: 24),
 
-            // Revenue and Payment Status
+            // Revenue and Payment Status (live)
             if (!isMobile)
               Row(
                 children: [
@@ -179,7 +202,7 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
               ),
             const SizedBox(height: 24),
 
-            // Outstanding Dues
+            // Outstanding Dues (live)
             _buildOutstandingDuesCard(isMobile),
           ],
         ),
@@ -187,7 +210,7 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
     );
   }
 
-  Widget _buildGrowthCard(
+  Widget _buildMetricCard(
       IconData icon, String value, String label, Color color) {
     final isMobile = MediaQuery.of(context).size.width < 600;
 
@@ -335,14 +358,20 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
             ),
           ),
           const SizedBox(height: 20),
-          Center(
-            child: Text(
-              'LKR 185K',
-              style: TextStyle(
-                fontSize: isMobile ? 28 : 36,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+          FutureBuilder<double>(
+            future: _monthlyRevenue(),
+            builder: (context, s) {
+              final v = 'LKR ${(s.data ?? 0).toStringAsFixed(0)}';
+              return Center(
+                child: Text(
+                  v,
+                  style: TextStyle(
+                    fontSize: isMobile ? 28 : 36,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              );
+            },
           ),
           Center(
             child: Text(
@@ -354,8 +383,7 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
             ),
           ),
           const SizedBox(height: 20),
-          _buildRevenueItem('Tutor Subscriptions:', 'LKR 190K'),
-          _buildRevenueItem('Platform Fees:', 'LKR -5K'),
+          _buildRevenueItem('Verified Payments (This Month):', ''),
         ],
       ),
     );
@@ -385,9 +413,27 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
             ),
           ),
           const SizedBox(height: 20),
-          _buildPaymentStatus('Verified', 156, Colors.green),
-          _buildPaymentStatus('Pending', 12, Colors.orange),
-          _buildPaymentStatus('Rejected', 3, Colors.red),
+          FutureBuilder<int>(
+            future: _count(FirebaseFirestore.instance
+                .collection('payments')
+                .where('verifyStatus', isEqualTo: 'verified')),
+            builder: (context, s) =>
+                _buildPaymentStatus('Verified', s.data ?? 0, Colors.green),
+          ),
+          FutureBuilder<int>(
+            future: _count(FirebaseFirestore.instance
+                .collection('payments')
+                .where('verifyStatus', isEqualTo: 'pending')),
+            builder: (context, s) =>
+                _buildPaymentStatus('Pending', s.data ?? 0, Colors.orange),
+          ),
+          FutureBuilder<int>(
+            future: _count(FirebaseFirestore.instance
+                .collection('payments')
+                .where('verifyStatus', isEqualTo: 'rejected')),
+            builder: (context, s) =>
+                _buildPaymentStatus('Rejected', s.data ?? 0, Colors.red),
+          ),
         ],
       ),
     );
@@ -414,49 +460,38 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 20),
-          if (isMobile)
-            Column(
-              children: [
-                _buildDueItem('LKR 45K', 'Total Outstanding', Colors.red, true),
-                const SizedBox(height: 16),
-                _buildDueItem('8', 'Tutors with Dues', Colors.black, false),
-                const SizedBox(height: 16),
-                _buildDueItem('3', 'Overdue > 30 days', Colors.orange, false),
-              ],
-            )
-          else
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildDueItem('LKR 45K', 'Total Outstanding', Colors.red, true),
-                _buildDueItem('8', 'Tutors with Dues', Colors.black, false),
-                _buildDueItem('3', 'Overdue > 30 days', Colors.orange, false),
-              ],
-            ),
+          FutureBuilder<_OutstandingSummary>(
+            future: _computeOutstanding(),
+            builder: (context, s) {
+              final sum = s.data?.totalAmount ?? 0;
+              final countUnpaid = s.data?.unpaidCount ?? 0;
+              final overdue = s.data?.overdueCount ?? 0;
+              final children = [
+                _buildDueItem('LKR ${sum.toStringAsFixed(0)}',
+                    'Total Outstanding', Colors.red, true),
+                _buildDueItem(
+                    '$countUnpaid', 'Unpaid Invoices', Colors.black, false),
+                _buildDueItem(
+                    '$overdue', 'Overdue > 30 days', Colors.orange, false),
+              ];
+              if (isMobile) {
+                return Column(children: [
+                  children[0],
+                  const SizedBox(height: 16),
+                  children[1],
+                  const SizedBox(height: 16),
+                  children[2],
+                ]);
+              } else {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: children,
+                );
+              }
+            },
+          ),
         ],
       ),
-    );
-  }
-
-  Widget _buildDueItem(String value, String label, Color color, bool isAmount) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: isAmount ? color : Colors.black,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey[600],
-          ),
-        ),
-      ],
     );
   }
 
@@ -511,4 +546,155 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
       ),
     );
   }
+
+  Widget _buildDueItem(String value, String label, Color color, bool isAmount) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: isAmount ? color : Colors.black,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Data helpers
+  Future<int> _count(Query<Map<String, dynamic>> query) async {
+    try {
+      final agg = await query.count().get();
+      return agg.count ?? 0;
+    } catch (_) {
+      try {
+        final snap = await query.limit(1000).get();
+        return snap.size;
+      } catch (_) {
+        return 0;
+      }
+    }
+  }
+
+  Future<int> _monthlyVerifiedCount() async {
+    try {
+      final now = DateTime.now();
+      final start = DateTime(now.year, now.month, 1);
+      final end = DateTime(now.year, now.month + 1, 1);
+      final qs = await FirebaseFirestore.instance
+          .collection('payments')
+          .where('verifyStatus', isEqualTo: 'verified')
+          .where('paidAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .where('paidAt', isLessThan: Timestamp.fromDate(end))
+          .get();
+      return qs.size;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<double> _monthlyRevenue() async {
+    try {
+      final now = DateTime.now();
+      final start = DateTime(now.year, now.month, 1);
+      final end = DateTime(now.year, now.month + 1, 1);
+      final qs = await FirebaseFirestore.instance
+          .collection('payments')
+          .where('verifyStatus', isEqualTo: 'verified')
+          .where('paidAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .where('paidAt', isLessThan: Timestamp.fromDate(end))
+          .get();
+      double sum = 0;
+      for (final d in qs.docs) {
+        final data = d.data();
+        final num? v = data['paidAmount'] as num? ?? data['amountDue'] as num?;
+        if (v != null) sum += v.toDouble();
+      }
+      return sum;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<Map<String, int>> _loadSubjectDistribution() async {
+    try {
+      final qs = await FirebaseFirestore.instance
+          .collection('classes')
+          .where('status', isEqualTo: 'published')
+          .limit(1000)
+          .get();
+      final Map<String, int> counts = <String, int>{};
+      for (final d in qs.docs) {
+        final data = d.data();
+        final code = (data['subject_code'] as String?) ?? '';
+        final label = _subjectLabel(code);
+        if (label.isEmpty) continue;
+        counts[label] = (counts[label] ?? 0) + 1;
+      }
+      if (mounted) setState(() => _subjectDistribution = counts);
+      return counts;
+    } catch (_) {
+      return _subjectDistribution;
+    }
+  }
+
+  String _subjectLabel(String? code) {
+    if (code == null || code.isEmpty) return '';
+    final match = kSubjectOptions.firstWhere(
+      (s) => s.code == code,
+      orElse: () => SubjectOption(code: code, label: code),
+    );
+    return match.label;
+  }
+
+  Future<_OutstandingSummary> _computeOutstanding() async {
+    try {
+      final qs = await FirebaseFirestore.instance
+          .collection('invoices')
+          .limit(1000)
+          .get();
+      double total = 0;
+      int unpaid = 0;
+      int overdue = 0;
+      final now = DateTime.now();
+      for (final d in qs.docs) {
+        final m = d.data();
+        final status = (m['status'] as String?)?.toLowerCase() ?? '';
+        final num? amount = m['amountDue'] as num?;
+        final due = m['dueDate'];
+        DateTime? dueDate;
+        if (due is Timestamp) dueDate = due.toDate();
+        if (status != 'paid') {
+          unpaid += 1;
+          if (amount != null) total += amount.toDouble();
+          if (dueDate != null && now.difference(dueDate).inDays > 30) {
+            overdue += 1;
+          }
+        }
+      }
+      return _OutstandingSummary(
+          totalAmount: total, unpaidCount: unpaid, overdueCount: overdue);
+    } catch (_) {
+      return _OutstandingSummary(
+          totalAmount: 0, unpaidCount: 0, overdueCount: 0);
+    }
+  }
+}
+
+class _OutstandingSummary {
+  _OutstandingSummary(
+      {required this.totalAmount,
+      required this.unpaidCount,
+      required this.overdueCount});
+  final double totalAmount;
+  final int unpaidCount;
+  final int overdueCount;
 }

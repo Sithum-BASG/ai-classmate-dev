@@ -55,7 +55,7 @@ class _LoginPageState extends State<LoginPage> {
         title: const Text('Login'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/auth'),
+          onPressed: () => context.go('/'),
         ),
       ),
       body: SingleChildScrollView(

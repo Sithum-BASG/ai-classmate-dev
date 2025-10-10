@@ -25,6 +25,7 @@ class _SearchPageState extends State<SearchPage> {
   Map<String, num> _recScores = const {};
   String? _lastDocsKey;
   List<QueryDocumentSnapshot<Map<String, dynamic>>>? _lastSorted;
+  bool _onlyAvailable = false;
 
   int? _studentGrade;
   String? _studentAreaCode;
@@ -158,6 +159,13 @@ class _SearchPageState extends State<SearchPage> {
                       const SizedBox(width: 8),
                       _buildTypeChip(
                           'Individual', _selectedType == 'Individual'),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: const Text('Available seats'),
+                        selected: _onlyAvailable,
+                        onSelected: (val) =>
+                            setState(() => _onlyAvailable = val),
+                      ),
                     ],
                   ),
                 ),
@@ -202,7 +210,16 @@ class _SearchPageState extends State<SearchPage> {
               final subjectOk = _selectedSubjectCodes.isEmpty ||
                   _selectedSubjectCodes.contains(subject);
               final notEnrolled = !enrolledIds.contains(d.id);
-              return matchesText && subjectOk && notEnrolled;
+              // Available seats filter: enrolled_count < capacity (capacitySeats/max_students)
+              final capRaw = data['capacitySeats'] ??
+                  data['capacity_seats'] ??
+                  data['max_students'] ??
+                  data['maxStudents'];
+              final capacity = (capRaw is num) ? capRaw.toInt() : null;
+              final enrolled = (data['enrolled_count'] as num?)?.toInt() ?? 0;
+              final seatsOk = !_onlyAvailable ||
+                  (capacity == null ? true : enrolled < capacity);
+              return matchesText && subjectOk && notEnrolled && seatsOk;
             }).toList();
             if (docs.isEmpty) {
               return const Center(child: Text('No classes found.'));
@@ -437,32 +454,55 @@ class _SearchPageState extends State<SearchPage> {
                   children: [
                     if ((c['tutorId'] as String?) != null &&
                         (c['tutorId'] as String).isNotEmpty)
-                      Row(
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(Icons.person,
-                              size: 16, color: AppTheme.brandPrimary),
-                          const SizedBox(width: 6),
-                          FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                            future: FirebaseFirestore.instance
-                                .collection('tutor_profiles')
-                                .doc(c['tutorId'] as String)
-                                .get(),
-                            builder: (context, snap) {
-                              final data =
-                                  snap.data?.data() ?? <String, dynamic>{};
-                              final tn =
-                                  (data['full_name'] as String?) ?? 'Tutor';
-                              return Text(
-                                'Tutor: $tn',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                      color: AppTheme.brandPrimary,
-                                    ),
-                              );
-                            },
+                          Row(
+                            children: [
+                              const Icon(Icons.person,
+                                  size: 16, color: AppTheme.brandPrimary),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: FutureBuilder<
+                                    DocumentSnapshot<Map<String, dynamic>>>(
+                                  future: FirebaseFirestore.instance
+                                      .collection('tutor_profiles')
+                                      .doc(c['tutorId'] as String)
+                                      .get(),
+                                  builder: (context, snap) {
+                                    final data = snap.data?.data() ??
+                                        <String, dynamic>{};
+                                    final tn = (data['full_name'] as String?) ??
+                                        'Tutor';
+                                    return Text(
+                                      'Tutor: $tn',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                            color: AppTheme.brandPrimary,
+                                          ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              _SearchTutorRating(
+                                  tutorId: c['tutorId'] as String),
+                              const SizedBox(width: 8),
+                              TextButton(
+                                onPressed: () => _showTutorProfile(
+                                    context, c['tutorId'] as String),
+                                child: const Text('View Profile'),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -566,6 +606,151 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
+  void _showTutorProfile(BuildContext context, String tutorId) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          builder: (context, controller) {
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: SingleChildScrollView(
+                controller: controller,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.person, color: AppTheme.brandPrimary),
+                        const SizedBox(width: 8),
+                        FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                          future: FirebaseFirestore.instance
+                              .collection('tutor_profiles')
+                              .doc(tutorId)
+                              .get(),
+                          builder: (context, snap) {
+                            final data =
+                                snap.data?.data() ?? <String, dynamic>{};
+                            final name =
+                                (data['full_name'] as String?) ?? 'Tutor';
+                            return Text(name,
+                                style: const TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.w700));
+                          },
+                        ),
+                        const Spacer(),
+                        _SearchTutorRating(tutorId: tutorId),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                      future: FirebaseFirestore.instance
+                          .collection('tutor_profiles')
+                          .doc(tutorId)
+                          .get(),
+                      builder: (context, pSnap) {
+                        final p = pSnap.data?.data() ?? <String, dynamic>{};
+                        final subjects =
+                            (p['subjects_taught'] as List?)?.cast<String>() ??
+                                const <String>[];
+                        final areaCode = (p['area_code'] as String?) ?? '';
+                        final about = (p['about'] as String?) ?? '';
+                        final qualifications =
+                            (p['qualifications'] as String?) ?? '';
+                        final experience = (p['experience'] as String?) ?? '';
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.place,
+                                    size: 16, color: Colors.grey),
+                                const SizedBox(width: 6),
+                                Text(_areaName(areaCode),
+                                    style: const TextStyle(fontSize: 13)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            if (subjects.isNotEmpty) ...[
+                              const Text('Subjects',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: subjects
+                                    .map((s) => Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey
+                                                .withValues(alpha: 0.1),
+                                            borderRadius:
+                                                BorderRadius.circular(6),
+                                          ),
+                                          child: Text(_subjectName(s),
+                                              style: const TextStyle(
+                                                  fontSize: 12)),
+                                        ))
+                                    .toList(),
+                              ),
+                              const SizedBox(height: 10),
+                            ],
+                            if (about.isNotEmpty) ...[
+                              const Text('About',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 4),
+                              Text(about, style: const TextStyle(fontSize: 13)),
+                              const SizedBox(height: 10),
+                            ],
+                            if (qualifications.isNotEmpty) ...[
+                              const Text('Qualifications',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 4),
+                              Text(qualifications,
+                                  style: const TextStyle(fontSize: 13)),
+                              const SizedBox(height: 10),
+                            ],
+                            if (experience.isNotEmpty) ...[
+                              const Text('Experience',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 4),
+                              Text(experience,
+                                  style: const TextStyle(fontSize: 13)),
+                              const SizedBox(height: 10),
+                            ],
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showFilterBottomSheet() {
     showModalBottomSheet(
       context: context,
@@ -648,6 +833,14 @@ class _SearchPageState extends State<SearchPage> {
                           ? 'No preferences set'
                           : _studentSubjects.map(_subjectName).join(', ')),
                     ),
+                    CheckboxListTile(
+                      value: _onlyAvailable,
+                      onChanged: (v) =>
+                          updateBoth(() => _onlyAvailable = v ?? false),
+                      title:
+                          const Text('Only show classes with available seats'),
+                      subtitle: const Text('Hides classes that are full'),
+                    ),
                     const SizedBox(height: 12),
                     ElevatedButton(
                       onPressed: () => Navigator.pop(context),
@@ -700,6 +893,39 @@ class _SearchPageState extends State<SearchPage> {
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(label, style: TextStyle(fontSize: 11, color: color)),
+    );
+  }
+
+  // small rating summary for search cards
+  Widget _SearchTutorRating({required String tutorId}) {
+    final ratingsRef = FirebaseFirestore.instance
+        .collection('tutor_profiles')
+        .doc(tutorId)
+        .collection('ratings');
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: ratingsRef.snapshots(),
+      builder: (context, snap) {
+        final docs = snap.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return const Text('No ratings', style: TextStyle(fontSize: 12));
+        }
+        double avg = 0;
+        for (final d in docs) {
+          final r = (d.data()['rating'] as num?)?.toDouble() ?? 0;
+          avg += r;
+        }
+        avg = avg / docs.length;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.star, size: 14, color: AppTheme.brandPrimary),
+            const SizedBox(width: 3),
+            Text(avg.toStringAsFixed(1), style: const TextStyle(fontSize: 12)),
+            const SizedBox(width: 3),
+            Text('(${docs.length})', style: const TextStyle(fontSize: 12)),
+          ],
+        );
+      },
     );
   }
 

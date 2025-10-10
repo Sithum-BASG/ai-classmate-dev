@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/auth_service.dart';
@@ -16,6 +17,7 @@ class _TutorLoginPageState extends State<TutorLoginPage> {
   final TextEditingController _passwordController = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
+  bool _rememberMe = true;
 
   @override
   void dispose() {
@@ -28,6 +30,11 @@ class _TutorLoginPageState extends State<TutorLoginPage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
+      // Persist auth session if remember me enabled (web only). On mobile, persistence is local by default.
+      if (kIsWeb) {
+        await FirebaseAuth.instance.setPersistence(
+            _rememberMe ? Persistence.LOCAL : Persistence.SESSION);
+      }
       await AuthService().signInWithEmail(
         email: _emailController.text.trim(),
         password: _passwordController.text,
@@ -46,7 +53,13 @@ class _TutorLoginPageState extends State<TutorLoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Tutor Login')),
+      appBar: AppBar(
+        title: const Text('Tutor Login'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/'),
+        ),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Form(
@@ -77,6 +90,16 @@ class _TutorLoginPageState extends State<TutorLoginPage> {
                 validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
               ),
               const SizedBox(height: 20),
+              Row(
+                children: [
+                  Checkbox(
+                    value: _rememberMe,
+                    onChanged: (v) => setState(() => _rememberMe = v ?? true),
+                  ),
+                  const Text('Remember me'),
+                ],
+              ),
+              const SizedBox(height: 8),
               ElevatedButton(
                 onPressed: _loading ? null : _submit,
                 child: _loading
@@ -87,6 +110,11 @@ class _TutorLoginPageState extends State<TutorLoginPage> {
                             strokeWidth: 2,
                             valueColor: AlwaysStoppedAnimation(Colors.white)))
                     : const Text('Login'),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => context.go('/tutor/auth/register'),
+                child: const Text('Create an account'),
               ),
             ],
           ),

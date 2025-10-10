@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import '../theme.dart';
 import '../config/subjects.dart';
 
@@ -15,6 +17,8 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   String? _profileImagePath; // Placeholder; storage integration later
+  String? _profileImageUrl;
+  final ImagePicker _picker = ImagePicker();
   String _userName = '';
   String _userGradeLabel = '';
 
@@ -65,21 +69,28 @@ class _ProfilePageState extends State<ProfilePage> {
                 children: [
                   Stack(
                     children: [
-                      CircleAvatar(
-                        radius: 60,
-                        backgroundColor:
-                            AppTheme.brandPrimary.withValues(alpha: 0.1),
-                        backgroundImage: _profileImagePath != null
-                            ? FileImage(File(_profileImagePath!))
-                            : null,
-                        child: _profileImagePath == null
-                            ? const Icon(
-                                Icons.person,
-                                size: 60,
-                                color: AppTheme.brandPrimary,
-                              )
-                            : null,
-                      ),
+                      Builder(builder: (context) {
+                        ImageProvider? provider;
+                        if (_profileImagePath != null) {
+                          provider = FileImage(File(_profileImagePath!));
+                        } else if (_profileImageUrl != null &&
+                            _profileImageUrl!.isNotEmpty) {
+                          provider = NetworkImage(_profileImageUrl!);
+                        }
+                        return CircleAvatar(
+                          radius: 60,
+                          backgroundColor:
+                              AppTheme.brandPrimary.withValues(alpha: 0.1),
+                          backgroundImage: provider,
+                          child: provider == null
+                              ? const Icon(
+                                  Icons.person,
+                                  size: 60,
+                                  color: AppTheme.brandPrimary,
+                                )
+                              : null,
+                        );
+                      }),
                       Positioned(
                         bottom: 0,
                         right: 0,
@@ -99,7 +110,6 @@ class _ProfilePageState extends State<ProfilePage> {
                               size: 20,
                             ),
                             onPressed: () {
-                              // TODO: Implement image picker
                               _showImagePickerOptions();
                             },
                           ),
@@ -180,25 +190,33 @@ class _ProfilePageState extends State<ProfilePage> {
                     Icons.calendar_month,
                     'My Schedule',
                     'View your upcoming classes',
-                    () {},
+                    () {
+                      context.push('/schedule');
+                    },
                   ),
                   _buildActionTile(
                     Icons.notifications_outlined,
                     'Notifications',
                     'Manage your notification settings',
-                    () {},
+                    () {
+                      context.push('/notifications');
+                    },
                   ),
                   _buildActionTile(
                     Icons.settings_outlined,
                     'Settings',
                     'App settings and preferences',
-                    () {},
+                    () {
+                      context.push('/settings');
+                    },
                   ),
                   _buildActionTile(
                     Icons.help_outline,
                     'Help & Support',
                     'Get help with the app',
-                    () {},
+                    () {
+                      context.push('/help');
+                    },
                   ),
                   const Divider(height: 32, indent: 20, endIndent: 20),
                   _buildActionTile(
@@ -287,28 +305,27 @@ class _ProfilePageState extends State<ProfilePage> {
                 _buildImageOption(
                   Icons.camera_alt,
                   'Camera',
-                  () {
+                  () async {
                     Navigator.pop(context);
-                    // TODO: Implement camera
+                    await _pickFromSource(ImageSource.camera);
                   },
                 ),
                 _buildImageOption(
                   Icons.photo_library,
                   'Gallery',
-                  () {
+                  () async {
                     Navigator.pop(context);
-                    // TODO: Implement gallery
+                    await _pickFromSource(ImageSource.gallery);
                   },
                 ),
-                if (_profileImagePath != null)
+                if (_profileImagePath != null ||
+                    (_profileImageUrl != null && _profileImageUrl!.isNotEmpty))
                   _buildImageOption(
                     Icons.delete,
                     'Remove',
-                    () {
+                    () async {
                       Navigator.pop(context);
-                      setState(() {
-                        _profileImagePath = null;
-                      });
+                      await _removeProfilePhoto();
                     },
                     color: Colors.red,
                   ),
@@ -357,6 +374,7 @@ class _ProfilePageState extends State<ProfilePage> {
     }
     String name = user.displayName?.trim() ?? '';
     String gradeLabel = '';
+    String? photoUrl = user.photoURL;
     try {
       final doc = await FirebaseFirestore.instance
           .collection('student_profiles')
@@ -371,6 +389,8 @@ class _ProfilePageState extends State<ProfilePage> {
             ? data['grade'] as int
             : int.tryParse('${data['grade']}');
         if (grade != null) gradeLabel = 'Grade $grade Student';
+        final String? p = (data['photoUrl'] as String?);
+        if (p != null && p.isNotEmpty) photoUrl = p;
       }
     } catch (_) {
       // ignore Firestore errors and fallback
@@ -382,7 +402,68 @@ class _ProfilePageState extends State<ProfilePage> {
     setState(() {
       _userName = name.isEmpty ? 'Student' : name;
       _userGradeLabel = gradeLabel;
+      _profileImageUrl = photoUrl;
     });
+  }
+
+  Future<void> _pickFromSource(ImageSource source) async {
+    try {
+      final XFile? picked = await _picker.pickImage(
+        source: source,
+        maxWidth: 1200,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      setState(() => _profileImagePath = picked.path);
+      await _uploadProfileImage(File(picked.path));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to pick image: $e')));
+    }
+  }
+
+  Future<void> _uploadProfileImage(File file) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final ref = FirebaseStorage.instance.ref().child(
+          'user_uploads/${user.uid}/profile/profile_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await ref.putFile(file, SettableMetadata(contentType: 'image/jpeg'));
+      final url = await ref.getDownloadURL();
+      await user.updatePhotoURL(url);
+      await FirebaseFirestore.instance
+          .collection('student_profiles')
+          .doc(user.uid)
+          .set({'photoUrl': url}, SetOptions(merge: true));
+      if (!mounted) return;
+      setState(() {
+        _profileImageUrl = url;
+        _profileImagePath = null;
+      });
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Profile photo updated')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+    }
+  }
+
+  Future<void> _removeProfilePhoto() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() {
+      _profileImagePath = null;
+      _profileImageUrl = null;
+    });
+    try {
+      await user.updatePhotoURL(null);
+      await FirebaseFirestore.instance
+          .collection('student_profiles')
+          .doc(user.uid)
+          .set({'photoUrl': FieldValue.delete()}, SetOptions(merge: true));
+    } catch (_) {}
   }
 
   void _confirmAndLogout() {

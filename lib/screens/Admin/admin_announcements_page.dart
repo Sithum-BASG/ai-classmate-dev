@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../theme.dart';
 
 class AdminAnnouncementsPage extends StatefulWidget {
@@ -12,25 +13,6 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
   final _titleController = TextEditingController();
   final _messageController = TextEditingController();
   String _selectedAudience = 'All Users';
-
-  final List<Map<String, dynamic>> _recentAnnouncements = [
-    {
-      'title': 'Platform Maintenance Scheduled',
-      'audience': 'All Users',
-      'message':
-          'System will be under maintenance on Dec 20th from 2:00 AM to 4:00 AM',
-      'date': '2024-12-15',
-      'status': 'Active',
-    },
-    {
-      'title': 'New Payment Methods Available',
-      'audience': 'Students',
-      'message':
-          'We now accept payments via mobile banking and digital wallets',
-      'date': '2024-12-14',
-      'status': 'Active',
-    },
-  ];
 
   @override
   void dispose() {
@@ -163,7 +145,6 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                       'All Users',
                       'Students Only',
                       'Tutors Only',
-                      'Specific Classes',
                     ].map((audience) {
                       return DropdownMenuItem(
                         value: audience,
@@ -201,7 +182,7 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
             ),
             SizedBox(height: isMobile ? 20 : 24),
 
-            // Recent Announcements
+            // Recent Announcements (live)
             Text(
               'Recent Announcements',
               style: Theme.of(context)
@@ -210,9 +191,40 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                   ?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-
-            ..._recentAnnouncements
-                .map((announcement) => _buildAnnouncementCard(announcement)),
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection('announcements')
+                  .orderBy('created_at', descending: true)
+                  .limit(25)
+                  .snapshots(),
+              builder: (context, snap) {
+                if (snap.hasError) {
+                  return Text('Failed to load: ${snap.error}',
+                      style: const TextStyle(color: Colors.red));
+                }
+                if (!snap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final docs = snap.data!.docs;
+                if (docs.isEmpty) {
+                  return const Text('No announcements yet');
+                }
+                return Column(
+                  children: docs.map((d) {
+                    final a = d.data();
+                    final map = {
+                      'id': d.id,
+                      'title': (a['title'] as String?) ?? 'Announcement',
+                      'audience': (a['audience'] as String?) ?? 'All Users',
+                      'message': (a['message'] as String?) ?? '',
+                      'date': _fmtDate(a['created_at']),
+                      'status': (a['status'] as String?) ?? 'Active',
+                    };
+                    return _buildAnnouncementCard(map);
+                  }).toList(),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -356,7 +368,7 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
     );
   }
 
-  void _sendAnnouncement() {
+  void _sendAnnouncement() async {
     if (_titleController.text.isEmpty || _messageController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -366,38 +378,75 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
       );
       return;
     }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Announcement sent successfully'),
-        backgroundColor: AppTheme.brandSecondary,
-      ),
-    );
-
-    setState(() {
-      _recentAnnouncements.insert(0, {
-        'title': _titleController.text,
+    try {
+      await FirebaseFirestore.instance.collection('announcements').add({
+        'title': _titleController.text.trim(),
+        'message': _messageController.text.trim(),
         'audience': _selectedAudience,
-        'message': _messageController.text,
-        'date': DateTime.now().toString().split(' ')[0],
         'status': 'Active',
+        'created_at': FieldValue.serverTimestamp(),
+        'date': DateTime.now().toIso8601String(),
       });
-    });
-
-    _titleController.clear();
-    _messageController.clear();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Announcement sent successfully'),
+          backgroundColor: AppTheme.brandSecondary,
+        ),
+      );
+      _titleController.clear();
+      _messageController.clear();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to send: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
   }
 
-  void _deleteAnnouncement(Map<String, dynamic> announcement) {
-    setState(() {
-      _recentAnnouncements.remove(announcement);
-    });
+  void _deleteAnnouncement(Map<String, dynamic> announcement) async {
+    final id = (announcement['id'] as String?) ?? '';
+    if (id.isEmpty) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('announcements')
+          .doc(id)
+          .delete();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Announcement deleted'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
+  }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Announcement deleted'),
-        backgroundColor: Theme.of(context).colorScheme.error,
-      ),
-    );
+  static String _fmtDate(dynamic createdAt) {
+    if (createdAt == null) {
+      return DateTime.now().toIso8601String().split('T').first;
+    }
+    try {
+      if (createdAt is Timestamp) {
+        return createdAt.toDate().toIso8601String().split('T').first;
+      }
+      if (createdAt is DateTime) {
+        return createdAt.toIso8601String().split('T').first;
+      }
+      return createdAt.toString();
+    } catch (_) {
+      return '';
+    }
   }
 }

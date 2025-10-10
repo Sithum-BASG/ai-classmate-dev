@@ -6,6 +6,7 @@ import '../screens/home_page.dart';
 import '../screens/student_dashboard_page.dart';
 import '../screens/search_page.dart';
 import '../screens/messages_page.dart';
+import '../screens/chat_detail_page.dart';
 import '../screens/profile_page.dart';
 import '../widgets/chatbot_fab.dart';
 import '../screens/auth/student_auth_welcome_page.dart';
@@ -35,8 +36,16 @@ import '../screens/tutor/tutor_student_details_page.dart';
 import '../screens/tutor/tutor_subscription_page.dart';
 import '../screens/tutor/create_session_page.dart';
 import '../screens/tutor/tutor_session_details_page.dart';
+import '../screens/tutor/tutor_announcements_page.dart';
 import '../screens/student_class_details_page.dart';
 import '../screens/student_enrollment_details_page.dart';
+import '../screens/student_write_review_page.dart';
+import '../screens/my_schedule_page.dart';
+import '../screens/notifications_page.dart';
+import '../screens/settings_page.dart';
+import '../screens/help_support_page.dart';
+import '../screens/tutor/tutor_reviews_page.dart';
+import '../screens/material_viewer_page.dart';
 
 final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -50,9 +59,13 @@ final GoRouter appRouter = GoRouter(
     final bool goingToAuth = dest.startsWith('/auth');
     final bool goingToStudent = dest.startsWith('/student');
     final bool goingToTutor = dest == '/tutor';
+    final bool goingToTutorAuth = dest.startsWith('/tutor/auth');
 
     if (!loggedIn && goingToStudent) {
       return '/auth';
+    }
+    if (loggedIn && goingToTutorAuth) {
+      return '/tutor';
     }
     if (loggedIn && goingToAuth) {
       return '/student';
@@ -67,6 +80,14 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/',
       builder: (context, state) => const HomePage(),
+    ),
+    GoRoute(
+      path: '/material/view',
+      builder: (context, state) {
+        final title = state.uri.queryParameters['name'] ?? 'Material';
+        final url = state.uri.queryParameters['url'] ?? '';
+        return MaterialViewerPage(title: title, url: url);
+      },
     ),
 
     // Auth Routes
@@ -117,8 +138,31 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const MessagesPage(),
     ),
     GoRoute(
+      path: '/chat/:peerId',
+      builder: (context, state) {
+        final peerId = state.pathParameters['peerId'] ?? '';
+        return ChatDetailPage(peerId: peerId);
+      },
+    ),
+    GoRoute(
       path: '/profile',
       builder: (context, state) => const ProfilePage(),
+    ),
+    GoRoute(
+      path: '/notifications',
+      builder: (context, state) => const NotificationSettingsPage(),
+    ),
+    GoRoute(
+      path: '/settings',
+      builder: (context, state) => const SettingsPage(),
+    ),
+    GoRoute(
+      path: '/help',
+      builder: (context, state) => const HelpSupportPage(),
+    ),
+    GoRoute(
+      path: '/schedule',
+      builder: (context, state) => const MySchedulePage(),
     ),
     // Student view of announcements
     GoRoute(
@@ -141,6 +185,13 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) {
         final enrollmentId = state.pathParameters['id'] ?? '';
         return StudentEnrollmentDetailsPage(enrollmentId: enrollmentId);
+      },
+    ),
+    GoRoute(
+      path: '/enrollment/:id/review',
+      builder: (context, state) {
+        final enrollmentId = state.pathParameters['id'] ?? '';
+        return StudentWriteReviewPage(enrollmentId: enrollmentId);
       },
     ),
 
@@ -169,6 +220,10 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const TutorMessagesPage(),
     ),
     GoRoute(
+      path: '/tutor/announcements',
+      builder: (context, state) => const TutorAnnouncementsPage(),
+    ),
+    GoRoute(
       path: '/tutor/profile',
       builder: (context, state) => const TutorProfilePage(),
     ),
@@ -183,6 +238,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/tutor/subscription',
       builder: (context, state) => const TutorSubscriptionPage(),
+    ),
+    GoRoute(
+      path: '/tutor/reviews',
+      builder: (context, state) => const TutorReviewsPage(),
     ),
     GoRoute(
       path: '/tutor/class/new',

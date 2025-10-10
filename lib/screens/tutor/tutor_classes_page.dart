@@ -17,6 +17,24 @@ class TutorClassesPage extends StatefulWidget {
 class _TutorClassesPageState extends State<TutorClassesPage> {
   int _selectedIndex = 1;
 
+  Future<Map<String, int>> _computeClassStats(
+      String classId, int pricePerSession) async {
+    // Students = active or pending enrollments for this class
+    int students = 0;
+    int income = 0;
+    try {
+      final enrSnap = await FirebaseFirestore.instance
+          .collection('enrollments')
+          .where('classId', isEqualTo: classId)
+          .where('status', whereIn: ['active', 'pending']).get();
+      students = enrSnap.docs.length;
+
+      // Income = current students * price per session
+      income = students * pricePerSession;
+    } catch (_) {}
+    return {'students': students, 'income': income};
+  }
+
   void _onBottomNavTap(int index) {
     setState(() => _selectedIndex = index);
     switch (index) {
@@ -43,7 +61,13 @@ class _TutorClassesPageState extends State<TutorClassesPage> {
         elevation: 0.5,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              context.pop();
+            } else {
+              context.go('/tutor');
+            }
+          },
         ),
         title: const Text('Class Management'),
         actions: [
@@ -148,7 +172,7 @@ class _TutorClassesPageState extends State<TutorClassesPage> {
             final maxStudents = (data['max_students'] as num?)?.toInt() ?? 0;
             final enrolled = (data['enrolled_count'] as num?)?.toInt() ?? 0;
             final price = (data['price'] as num?)?.toInt() ?? 0;
-            final totalIncome = (data['total_income'] as num?)?.toInt() ?? 0;
+            // legacy total_income not used in UI after live calc
 
             return Container(
               margin: const EdgeInsets.only(bottom: 16),
@@ -251,68 +275,77 @@ class _TutorClassesPageState extends State<TutorClassesPage> {
                       const SizedBox(height: 12),
                       const Divider(),
                       const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
+                      FutureBuilder<Map<String, int>>(
+                        future: _computeClassStats(doc.id, price),
+                        builder: (context, statsSnap) {
+                          final stats = statsSnap.data;
+                          final liveStudents = stats?['students'] ?? enrolled;
+                          final liveIncome =
+                              stats?['income'] ?? (enrolled * price);
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                '$enrolled/$maxStudents',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '$liveStudents/$maxStudents',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Students',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
                               ),
-                              Text(
-                                'Students',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'LKR $price',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Per Session',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'LKR $liveIncome',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Total Income',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Text(
-                                'LKR $price',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                'Per Session',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Text(
-                                'LKR $totalIncome',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
-                                ),
-                              ),
-                              Text(
-                                'Total Income',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                          );
+                        },
                       ),
                     ],
                   ),

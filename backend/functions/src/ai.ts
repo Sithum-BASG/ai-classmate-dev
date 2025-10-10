@@ -2,6 +2,193 @@ import * as functions from 'firebase-functions';
 import { REGION, DATA_PLATFORM } from './config';
 import { getFirestore } from './init';
 
+async function getAccessToken(): Promise<string> {
+  const { GoogleAuth } = await import('google-auth-library');
+  const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
+  const client = await auth.getClient();
+  const token = await client.getAccessToken();
+  if (!token || !token.token) throw new Error('Failed to get access token');
+  return token.token;
+}
+
+export const chatbotReply = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    try {
+      if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Login required');
+      }
+      const prompt = (data?.prompt as string | undefined)?.trim() || '';
+      const debug = Boolean(data?.debug);
+      if (!prompt) {
+        throw new functions.https.HttpsError('invalid-argument', 'prompt is required');
+      }
+
+      const system = `You are AI ClassMate Assistant for a Flutter app using go_router.
+Speak with short, step-by-step guidance that matches these exact screens/terms:
+- Enroll flow: Search (/search) → open class (/class/:id) → Enroll (creates invoice) → Upload payment proof in Enrollment details (/enrollment/:id). Invoice statuses: awaiting_proof, under_review, approved, rejected.
+- See invoices/payment: open Enrollment details (/enrollment/:id). Do not claim to take payments.
+- Messages: Student chats are in /messages; tutor messages: quick message icon or class messages. Suggest opening /messages for replies.
+- Announcements: /announcements shows global announcements to students.
+- Classes: Published classes are visible; Available seats filter hides full classes; students don’t see classes they’re already enrolled in.
+Rules:
+- Be concise and actionable with numbered steps.
+- Use exact route labels above; don’t invent routes.
+- Never invent Firestore data or internal states; point to the correct screen to check.
+- If unsure, say what screen to use rather than guessing.`;
+
+      // Optional grounding from Firestore (ai_guidance/app.snippets) and simple RAG (ai_knowledge)
+      let guidanceExtra = '';
+      try {
+        const db = getFirestore();
+        const g = await db.collection('ai_guidance').doc('app').get();
+        const snippets = (g.exists ? ((g.data() as any)?.snippets as string | undefined) : undefined) || '';
+        if (snippets && typeof snippets === 'string') guidanceExtra = `\n\nApp notes:\n${snippets}`;
+        // Simple RAG: fetch small knowledge chunks and add top matches by keyword overlap
+        const knSnap = await db.collection('ai_knowledge').limit(100).get();
+        const items: Array<{ title: string; text: string; score: number }> = [];
+        const q = prompt.toLowerCase();
+        const tokens = q.split(/[^a-z0-9]+/).filter((t) => t.length > 2 && !['with','the','and','for','you','your','about','that'].includes(t));
+        for (const d of knSnap.docs) {
+          const data = d.data() as any;
+          const title = String(data.title || d.id);
+          const textStr = String(data.text || '');
+          const lower = textStr.toLowerCase();
+          let score = 0;
+          for (const t of tokens) { if (lower.includes(t)) score++; }
+          if (score > 0) items.push({ title, text: textStr, score });
+        }
+        items.sort((a,b)=> b.score - a.score);
+        const top = items.slice(0, 3);
+        if (top.length) {
+          guidanceExtra += '\n\nRelevant info (summaries):\n' + top.map((it)=>`- ${it.title}: ${it.text.substring(0, 400)}`).join('\n');
+        }
+      } catch (_) {
+        // ignore and use default system only
+      }
+
+      const genRegion = process.env.GENAI_REGION || 'us-central1';
+      const token = await getAccessToken();
+      const body = {
+        contents: [
+          { role: 'user', parts: [{ text: prompt }] }
+        ],
+        systemInstruction: { role: 'system', parts: [{ text: system + guidanceExtra }] },
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 512,
+        }
+      } as any;
+
+      // Simple rate limit: min 2s between calls per user
+      try {
+        const db = getFirestore();
+        const uref = db.collection('ai_usage').doc(context.auth.uid);
+        const u = await uref.get();
+        const now = Date.now();
+        const last = (u.exists ? Number((u.data() as any)?.lastMs) : 0) || 0;
+        if (now - last < 2000) {
+          return { error: 'Too many requests. Please wait a moment and try again.' };
+        }
+        await uref.set({ lastMs: now }, { merge: true });
+      } catch (_) { /* ignore */ }
+
+      const preferred = (process.env.GENAI_MODEL || '').trim();
+      const candidatesModels = [
+        ...(preferred ? [preferred] : []),
+        'gemini-2.5-flash',
+        'gemini-2.0-flash-001'
+      ];
+
+      let last404 = '';
+      // Tool: payment/invoice status quick check for this student
+      const lcPrompt = prompt.toLowerCase();
+      if ((lcPrompt.includes('payment') || lcPrompt.includes('invoice')) && lcPrompt.includes('status')) {
+        try {
+          const db = getFirestore();
+          const enrSnap = await db.collection('enrollments')
+            .where('studentId', '==', context.auth.uid)
+            .where('status', 'in', ['active','pending'])
+            .limit(5)
+            .get();
+          const statuses: Array<{ enrollmentId: string; className: string; status: string }> = [];
+          for (const e of enrSnap.docs) {
+            const enr = e.data() as any;
+            const classId = String(enr.classId || '');
+            let className = 'Class';
+            try {
+              const c = await db.collection('classes').doc(classId).get();
+              className = (c.data() as any)?.name || className;
+            } catch (_) {}
+            const inv = await db.collection('invoices').where('enrollmentId','==', e.id).limit(1).get();
+            const st = inv.empty ? 'awaiting_proof' : ((inv.docs[0].data() as any).status || 'awaiting_proof');
+            statuses.push({ enrollmentId: e.id, className, status: st });
+          }
+          if (statuses.length) {
+            const lines = statuses.map(s => `• ${s.className}: ${s.status} (open /enrollment/${s.enrollmentId})`).join('\n');
+            return { reply: `Here are your latest invoice statuses:\n${lines}`, hints: statuses.map(s => ({ label: s.className, route: `/enrollment/${s.enrollmentId}` })) };
+          }
+        } catch (_) { /* ignore and fall through to model */ }
+      }
+
+      for (const model of candidatesModels) {
+        const url = `https://${genRegion}-aiplatform.googleapis.com/v1/projects/${DATA_PLATFORM.dataProjectId}/locations/${genRegion}/publishers/google/models/${model}:generateContent`;
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(body),
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          if (resp.status === 404) {
+            last404 = model;
+            console.warn('chatbotReply model_not_found', { model, region: genRegion });
+            continue;
+          }
+          const errMsg = `Vertex error: ${resp.status} ${text}`;
+          console.error('chatbotReply vertex_error', { project: DATA_PLATFORM.dataProjectId, err: errMsg, model });
+          return { error: errMsg };
+        }
+        const dataJson: any = await resp.json();
+        const cands = dataJson?.candidates || [];
+        const first = cands[0];
+        const content = first?.content?.parts?.map((p: any) => p.text).join('\n') || 'Sorry, I could not respond.';
+        // Heuristic hints to open relevant routes
+        const lc = prompt.toLowerCase();
+        const hints: Array<{ label: string; route: string }> = [];
+        if (lc.includes('enroll') || lc.includes('join') || lc.includes('class')) hints.push({ label: 'Browse classes', route: '/search' });
+        if (lc.includes('invoice') || lc.includes('payment')) hints.push({ label: 'Open messages', route: '/messages' });
+        hints.push({ label: 'Announcements', route: '/announcements' });
+
+        // Fire-and-forget analytics
+        try {
+          const db = getFirestore();
+          await db.collection('ai_logs').add({
+            uid: context.auth.uid,
+            ts: new Date().toISOString(),
+            promptLen: prompt.length,
+            replyLen: content.length,
+            model,
+          });
+        } catch (_) { /* ignore */ }
+
+        return debug ? { reply: content, raw: dataJson, model, hints } : { reply: content, model, hints };
+      }
+
+      const errMsg = `No accessible Gemini model in ${genRegion}. Tried: ${candidatesModels.join(', ')}. Last 404 on: ${last404}`;
+      console.error('chatbotReply models_exhausted', errMsg);
+      return { error: errMsg };
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      console.error('chatbotReply_error', msg);
+      // Return error payload instead of throwing, so client can show friendly message
+      return { error: msg };
+    }
+  });
+
 // Use BigQuery REST via @google-cloud/bigquery only in production; for emulator, skip requiring GOOGLE_APPLICATION_CREDENTIALS.
 // We'll lazy import to avoid bundling issues in emulator.
 async function getBigQuery() {

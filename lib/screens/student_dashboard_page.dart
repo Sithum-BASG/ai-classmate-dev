@@ -44,10 +44,16 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
 
   Future<List<Map<String, dynamic>>> _fetchTopRecommendedClasses() async {
     try {
-      await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return const <Map<String, dynamic>>[];
+      await user.getIdToken(true);
       final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
           .httpsCallable('getRecommendationsRealtime');
-      final res = await callable.call({'limit': 2, 'debug': false});
+      final res = await callable.call({
+        'studentId': user.uid,
+        'limit': 2,
+        'debug': false,
+      });
       final data = (res.data as Map?)?.cast<String, dynamic>() ?? {};
       final results = ((data['results'] as List?) ?? [])
           .map((e) => (e as Map).cast<String, dynamic>())
@@ -448,13 +454,6 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              'Continue your Physics class with Mr. Kamal?',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[600],
-                              ),
-                            ),
                           ],
                         ),
                         Container(

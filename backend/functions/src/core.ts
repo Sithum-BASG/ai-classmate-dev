@@ -1,6 +1,7 @@
 import * as functions from 'firebase-functions';
 import { REGION } from './config';
 import { getAuth, getFirestore } from './init';
+import { FieldValue } from 'firebase-admin/firestore';
 import { isoNow, timesOverlap, timesOverlapDate, addDays } from './utils';
 
 // publishClass: tutor/admin publishes a draft class after clash checks
@@ -107,13 +108,23 @@ export const enrollInClass = functions
       }
 
       const enrollmentRef = db.collection('enrollments').doc();
+      // Fetch student profile for name/grade snapshot at enrollment time
+      const profSnap = await trx.get(db.collection('student_profiles').doc(studentId));
+      const prof = profSnap.exists ? (profSnap.data() as any) : undefined;
       trx.set(enrollmentRef, {
         enrollmentId: enrollmentRef.id,
         classId,
         studentId,
         status: 'active',
-        enrolledAt: isoNow()
+        enrolledAt: isoNow(),
+        studentName: prof?.full_name || null,
+        studentGrade: prof?.grade || null,
       });
+
+      // Grant tutor read access to this student's profile via authorizedTutors map
+      const authUpdate: any = {};
+      authUpdate[`authorizedTutors.${c.tutorId}`] = true;
+      trx.set(db.collection('student_profiles').doc(studentId), authUpdate, { merge: true });
 
       const amount = Number(c.fee || 0);
       const dueDate = addDays(new Date(), 7);
@@ -196,6 +207,21 @@ export const unenrollFromClass = functions
     if (en.status === 'cancelled') return { ok: true, status: 'cancelled' };
 
     await enrollRef.set({ status: 'cancelled', cancelledAt: isoNow() }, { merge: true });
+
+    // Revoke tutor's read access for this student (best-effort)
+    try {
+      const db = getFirestore();
+      const enrollment = (await enrollRef.get()).data() as any;
+      const classSnap = await db.collection('classes').doc(enrollment.classId).get();
+      const tutorId = (classSnap.data() as any)?.tutorId as string | undefined;
+      if (tutorId) {
+        const delUpdate: any = {};
+        delUpdate[`authorizedTutors.${tutorId}`] = FieldValue.delete();
+        await db.collection('student_profiles').doc(studentId).set(delUpdate, { merge: true });
+      }
+    } catch (_) {
+      // ignore
+    }
     return { ok: true };
   });
 
@@ -216,6 +242,8 @@ export const createOrUpdateSession = functions
     const endMs = (data?.endMs as number | undefined);
     const label = (data?.label as string) || undefined;
     const venue = (data?.venue as string) || undefined;
+    const repeatWeekly = Boolean(data?.repeatWeekly);
+    const weekday = (data?.weekday as number | undefined);
 
     if (!classId || (!startTimeIso && !startMs) || (!endTimeIso && !endMs)) {
       throw new functions.https.HttpsError('invalid-argument', 'classId and start/end time required');
@@ -272,6 +300,8 @@ export const createOrUpdateSession = functions
     };
     if (label) payload.label = label;
     if (venue) payload.venue = venue;
+    if (repeatWeekly) payload.repeatWeekly = true;
+    if (repeatWeekly && typeof weekday === 'number') payload.weekday = weekday;
 
     if (sessionId) {
       await db.collection('classes').doc(classId).collection('sessions').doc(sessionId).set(payload, { merge: true });
@@ -282,6 +312,77 @@ export const createOrUpdateSession = functions
       created_at: new Date(),
     });
     return { ok: true, sessionId: ref.id };
+  });
+
+// Scheduled job: create next weekly session for sessions with repeatWeekly=true once past
+export const rollForwardWeeklySessions = functions
+  .region(REGION)
+  .pubsub.schedule('every 12 hours')
+  .onRun(async () => {
+    const db = getFirestore();
+    const now = new Date();
+    // Admin privileges; read all sessions that are recurring
+    const qs = await db.collectionGroup('sessions').where('repeatWeekly', '==', true).get();
+    const byClass: Record<string, any[]> = {};
+    for (const d of qs.docs) {
+      const s = d.data() as any;
+      const startRaw = s.start_time || s.startTime;
+      const endRaw = s.end_time || s.endTime;
+      if (!startRaw || !endRaw) continue;
+      const start: Date = startRaw.toDate ? startRaw.toDate() : new Date(startRaw);
+      const end: Date = endRaw.toDate ? endRaw.toDate() : new Date(endRaw);
+      if (end > now) continue; // only roll forward after session ends
+      const parent = (d.ref.parent.parent); // classes/{classId}
+      if (!parent) continue;
+      const classId = parent.id;
+      if (!byClass[classId]) byClass[classId] = [];
+      byClass[classId].push({ id: d.id, ref: d.ref, start, end, data: s });
+    }
+
+    for (const [classId, sessions] of Object.entries(byClass)) {
+      // For each recurring session, attempt to create the immediate next week if not present
+      for (const s of sessions) {
+        const next = new Date(s.start.getTime());
+        next.setDate(next.getDate() + 7);
+        const yearEnd = new Date(next.getFullYear(), 11, 31, 23, 59, 59, 999);
+        if (next > yearEnd) continue;
+        const nextEnd = new Date(s.end.getTime());
+        nextEnd.setDate(nextEnd.getDate() + 7);
+
+        const classRef = db.collection('classes').doc(classId);
+        const sessionsRef = classRef.collection('sessions');
+        // idempotency: check if a session exists on that date with same start hour/min
+        const dayStart = new Date(next.getFullYear(), next.getMonth(), next.getDate());
+        const dayEnd = new Date(next.getFullYear(), next.getMonth(), next.getDate(), 23, 59, 59, 999);
+        const existing = await sessionsRef
+          .where('start_time', '>=', dayStart)
+          .where('start_time', '<=', dayEnd)
+          .get();
+        let found = false;
+        for (const e of existing.docs) {
+          const es = (e.data() as any).start_time;
+          if (!es) continue;
+          const est = es.toDate ? es.toDate() : new Date(es);
+          if (est.getHours() === next.getHours() && est.getMinutes() === next.getMinutes()) {
+            found = true;
+            break;
+          }
+        }
+        if (found) continue;
+
+        await sessionsRef.add({
+          start_time: next,
+          end_time: nextEnd,
+          classId,
+          label: s.data.label || null,
+          venue: s.data.venue || null,
+          repeatWeekly: true,
+          weekday: s.data.weekday || next.getDay(),
+          created_at: new Date(),
+        });
+      }
+    }
+    return null;
   });
 
 
@@ -372,5 +473,50 @@ export const reviewPayment = functions
     await invRef.set({ status: approve ? 'approved' : 'rejected', reviewedBy: reviewerId, reviewedAt: isoNow() }, { merge: true });
 
     return { ok: true, status: updates.verifyStatus };
+  });
+
+
+// getEnrollmentPaymentStatus: returns invoice status for an enrollment to tutors/admins
+// data: { enrollmentId: string }
+export const getEnrollmentPaymentStatus = functions
+  .region(REGION)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login required');
+    const uid = context.auth.uid;
+    const role = (context.auth.token as any).role;
+    const enrollmentId = data?.enrollmentId as string;
+    if (!enrollmentId) throw new functions.https.HttpsError('invalid-argument', 'enrollmentId is required');
+
+    const db = getFirestore();
+    const enrSnap = await db.collection('enrollments').doc(enrollmentId).get();
+    if (!enrSnap.exists) throw new functions.https.HttpsError('not-found', 'Enrollment not found');
+    const enr = enrSnap.data() as any;
+    const classSnap = await db.collection('classes').doc(enr.classId).get();
+    if (!classSnap.exists) throw new functions.https.HttpsError('not-found', 'Class not found');
+    const clazz = classSnap.data() as any;
+    const isAdmin = role === 'admin';
+    if (!isAdmin && clazz.tutorId !== uid) {
+      throw new functions.https.HttpsError('permission-denied', 'Not allowed');
+    }
+
+    const invSnap = await db
+      .collection('invoices')
+      .where('enrollmentId', '==', enrollmentId)
+      .get();
+    if (invSnap.empty) return { status: 'awaiting_proof' };
+    let resolved: 'approved' | 'under_review' | 'rejected' | 'awaiting_proof' = 'awaiting_proof';
+    let hasUnderReview = false;
+    let hasRejected = false;
+    for (const d of invSnap.docs) {
+      const s = (d.data() as any).status as string | undefined;
+      if (s === 'approved') { resolved = 'approved'; break; }
+      if (s === 'under_review') hasUnderReview = true;
+      if (s === 'rejected') hasRejected = true;
+    }
+    if (resolved !== 'approved') {
+      if (hasUnderReview) resolved = 'under_review';
+      else if (hasRejected) resolved = 'rejected';
+    }
+    return { status: resolved };
   });
 

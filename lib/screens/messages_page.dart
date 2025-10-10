@@ -1,30 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme.dart';
 
-class MessagesPage extends StatelessWidget {
+class MessagesPage extends StatefulWidget {
   const MessagesPage({super.key});
 
-  final List<Map<String, dynamic>> _messages = const [
-    {
-      'name': 'Mr. Silva',
-      'message': 'Physics Notes.pdf (2MB)',
-      'time': '2:30 PM',
-      'hasAttachment': true,
-      'attachmentType': 'pdf',
-      'unread': true,
-      'avatar': 'S',
-    },
-    {
-      'name': 'Dr. Perera',
-      'message': 'Great work on the chemistry assignment!',
-      'time': '11:45 AM',
-      'hasAttachment': false,
-      'attachmentType': null,
-      'unread': false,
-      'avatar': 'P',
-    },
-  ];
+  @override
+  State<MessagesPage> createState() => _MessagesPageState();
+}
+
+class _MessagesPageState extends State<MessagesPage> {
+  Stream<QuerySnapshot<Map<String, dynamic>>> _messagesStream() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      return const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
+    }
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('messages')
+        .orderBy('sentAt', descending: true)
+        .snapshots();
+  }
+
+  String _formatTime(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    try {
+      final dt = DateTime.tryParse(iso)?.toLocal();
+      if (dt == null) return '';
+      final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final min = dt.minute.toString().padLeft(2, '0');
+      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+      return '$hour:$min $ampm';
+    } catch (_) {
+      return '';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,135 +59,148 @@ class MessagesPage extends StatelessWidget {
           ),
         ),
       ),
-      body: ListView.separated(
-        itemCount: _messages.length,
-        separatorBuilder: (context, index) => const Divider(
-          height: 1,
-          indent: 72,
-        ),
-        itemBuilder: (context, index) {
-          final message = _messages[index];
-          return Container(
-            color: Colors.white,
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 8,
-              ),
-              leading: CircleAvatar(
-                radius: 24,
-                backgroundColor: AppTheme.brandPrimary.withValues(alpha: 0.1),
-                child: Text(
-                  message['avatar'],
-                  style: const TextStyle(
-                    color: AppTheme.brandPrimary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-              ),
-              title: Text(
-                message['name'],
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15,
-                ),
-              ),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Row(
-                  children: [
-                    if (message['hasAttachment'])
-                      Container(
-                        margin: const EdgeInsets.only(right: 4),
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          color: _getAttachmentColor(message['attachmentType']),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Icon(
-                          _getAttachmentIcon(message['attachmentType']),
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                      ),
-                    Expanded(
-                      child: Text(
-                        message['message'],
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    message['time'],
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: message['unread']
-                          ? AppTheme.brandPrimary
-                          : Colors.grey[500],
-                      fontWeight:
-                          message['unread'] ? FontWeight.w600 : FontWeight.w400,
-                    ),
-                  ),
-                  if (message['unread'])
-                    Container(
-                      margin: const EdgeInsets.only(top: 4),
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: AppTheme.brandPrimary,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                ],
-              ),
-              onTap: () {
-                // TODO: Navigate to chat detail
-              },
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: _messagesStream(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final docs = snapshot.data?.docs ?? [];
+          if (docs.isEmpty) {
+            return const Center(child: Text('No messages yet'));
+          }
+          // Group into chat threads by peerId
+          final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+              byPeer = {};
+          for (final d in docs) {
+            final pid = (d.data()['peerId'] as String?) ?? '';
+            if (pid.isEmpty) continue;
+            byPeer.putIfAbsent(pid, () => []).add(d);
+          }
+          final threads = byPeer.entries.toList()
+            ..sort((a, b) {
+              final aIso = (a.value.first.data()['sentAt'] as String?) ?? '';
+              final bIso = (b.value.first.data()['sentAt'] as String?) ?? '';
+              final aMs = DateTime.tryParse(aIso)?.millisecondsSinceEpoch ?? 0;
+              final bMs = DateTime.tryParse(bIso)?.millisecondsSinceEpoch ?? 0;
+              return bMs.compareTo(aMs);
+            });
+          return ListView.separated(
+            itemCount: threads.length,
+            separatorBuilder: (context, index) => const Divider(
+              height: 1,
+              indent: 72,
             ),
+            itemBuilder: (context, index) {
+              final thread = threads[index];
+              final last = thread.value.first;
+              final m = last.data();
+              final peerId = thread.key;
+              final text = (m['text'] as String?) ?? '';
+              final sentAt = (m['sentAt'] as String?) ?? '';
+              final hasUnread = thread.value
+                  .any((x) => !(x.data()['read'] as bool? ?? false));
+              final initials = peerId.isNotEmpty
+                  ? peerId.substring(0, 1).toUpperCase()
+                  : '?';
+              return Container(
+                color: Colors.white,
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 8,
+                  ),
+                  leading: CircleAvatar(
+                    radius: 24,
+                    backgroundColor:
+                        AppTheme.brandPrimary.withValues(alpha: 0.1),
+                    child: Text(
+                      initials,
+                      style: const TextStyle(
+                        color: AppTheme.brandPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                  title: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                    future: FirebaseFirestore.instance
+                        .collection('tutor_profiles')
+                        .doc(peerId)
+                        .get(),
+                    builder: (context, nameSnap) {
+                      String display = peerId;
+                      final t = nameSnap.data?.data();
+                      if (t != null &&
+                          (t['full_name'] as String?)?.isNotEmpty == true) {
+                        display = t['full_name'] as String;
+                      }
+                      return Text(
+                        display,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      );
+                    },
+                  ),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      text,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  trailing: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        _formatTime(sentAt),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: hasUnread
+                              ? AppTheme.brandPrimary
+                              : Colors.grey[500],
+                          fontWeight:
+                              hasUnread ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
+                      if (hasUnread)
+                        Container(
+                          margin: const EdgeInsets.only(top: 4),
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: AppTheme.brandPrimary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                    ],
+                  ),
+                  onTap: () async {
+                    // Mark all in this thread as read
+                    final batch = FirebaseFirestore.instance.batch();
+                    for (final doc in thread.value) {
+                      batch.set(doc.reference, {'read': true},
+                          SetOptions(merge: true));
+                    }
+                    await batch.commit();
+                    if (!mounted) return;
+                    context.push('/chat/$peerId');
+                  },
+                ),
+              );
+            },
           );
         },
       ),
     );
-  }
-
-  IconData _getAttachmentIcon(String? type) {
-    switch (type) {
-      case 'pdf':
-        return Icons.picture_as_pdf;
-      case 'doc':
-        return Icons.description;
-      case 'image':
-        return Icons.image;
-      case 'video':
-        return Icons.video_library;
-      default:
-        return Icons.attach_file;
-    }
-  }
-
-  Color _getAttachmentColor(String? type) {
-    switch (type) {
-      case 'pdf':
-        return Colors.red;
-      case 'doc':
-        return Colors.blue;
-      case 'image':
-        return Colors.green;
-      case 'video':
-        return Colors.purple;
-      default:
-        return Colors.grey;
-    }
   }
 }
