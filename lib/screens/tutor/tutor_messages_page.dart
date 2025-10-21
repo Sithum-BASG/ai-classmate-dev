@@ -305,11 +305,30 @@ class _TutorMessagesPageState extends State<TutorMessagesPage> {
                             ),
                           ),
                         ),
-                        title: Text(
-                          (message['peerId'] as String?) ?? 'Student',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        title: FutureBuilder<
+                            DocumentSnapshot<Map<String, dynamic>>>(
+                          future: FirebaseFirestore.instance
+                              .collection('student_profiles')
+                              .doc(message['peerId'] as String?)
+                              .get(),
+                          builder: (context, nameSnap) {
+                            String display =
+                                (message['peerId'] as String?) ?? 'Student';
+                            final studentData = nameSnap.data?.data();
+                            if (studentData != null &&
+                                (studentData['full_name'] as String?)
+                                        ?.isNotEmpty ==
+                                    true) {
+                              display = studentData['full_name'] as String;
+                            }
+                            return Text(
+                              display,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w600),
+                            );
+                          },
                         ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,

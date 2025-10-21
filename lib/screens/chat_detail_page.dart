@@ -58,7 +58,21 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
         ),
-        title: const Text('Chat'),
+        title: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          future: FirebaseFirestore.instance
+              .collection('student_profiles')
+              .doc(widget.peerId)
+              .get(),
+          builder: (context, nameSnap) {
+            String display = 'Chat';
+            final studentData = nameSnap.data?.data();
+            if (studentData != null &&
+                (studentData['full_name'] as String?)?.isNotEmpty == true) {
+              display = studentData['full_name'] as String;
+            }
+            return Text(display);
+          },
+        ),
       ),
       body: Column(
         children: [
